@@ -140,3 +140,5 @@ Ortak erişim kodları yerine herkesin kendi hesabı vardır. Şifreler yalnızc
 - **Yoklama ve tarama:** Kurallar aynıdır (her ders 2 saat, ders bazında sınır, izni yalnızca yönetim değiştirir, çok sayfalı sirkünün sayfaları ayrı ayrı taranabilir). Eşzamanlı düzenlemede kayıt sürüm numarasıyla denetlenir; sizden sonra biri kaydettiyse yoklama yeniden açılmalıdır. PDF okuyucu (pdf.js) CDN'den değil uygulamanın kendi paketinden yüklenir. Sirküdeki hücre yerleri ekranda değil tam A4 boyutundaki görünmez bir kopyada ölçülür; dar ekranda basılan sirküler de doğru okunur.
 - **Tarama görüntüleri** Drive yerine veritabanında saklanır (sayfa başına ~100–150 KB) ve yalnızca yönetim panelinden görüntülenir. Kişisel veri olduğu için dönem sonunda **Yoklama → Bütün tarama görüntülerini sil** ile silinmeli; gerekirse önce görüntülerle birlikte tam yedek alınır.
 - **Yedek:** "Tam yedek al" e-tablonun Drive kopyası yerine bütün tabloları içeren bir JSON dosyası indirir; `npm run geri-yukle` ile tek işlemde geri yüklenir. Supabase'in günlük yedekleri (ücretli planda belirli bir ana dönme) ya da Neon'un geri dönme özelliği de kullanılabilir.
+#   H a z - r l - k  
+ 
