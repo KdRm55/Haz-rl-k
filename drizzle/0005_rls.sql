@@ -1,0 +1,23 @@
+ALTER TABLE "aktarim_gecmisi" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "ayarlar" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "donem_sinav_dersleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "donem_sinav_ogrencileri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "donem_sinav_puanlari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "donem_sinav_yerleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "donem_sinavlari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "duyurular" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "erisim_kodlari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "giris_denemeleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "hoca_programi" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "islem_kaydi" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "ogrenci_degisiklikleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "ogrenciler" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "sinav_sonuclari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "sinav_yeri_kayitlari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "sinav_yeri_listeleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "sinif_taslagi" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "siniflar" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "tarama_gorselleri" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "yetkililer" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "yoklama_evraklari" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "yoklamalar" ENABLE ROW LEVEL SECURITY;
