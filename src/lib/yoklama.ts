@@ -13,7 +13,7 @@ import { hocaKapsami, islemKaydet, kimAdi, oturumGerekli, yetkiGerekli, type Otu
 import type { SinifOgrencili } from './sirku-kurallari';
 import {
   devamsizlikHesapla, eksikOturumlar, evrakNoUret, gelmeyenSayisi, gunAdi, haftalikDersSaatleri, isoEkle, isoGecerli, isoTr, noListesi,
-  ogrenciYoklamaDegistir, oturumAnahtari, ozet, pazartesi, programdaVar, programOturumlari, sinirHesapla, trIso, yokAyarCoz, yoklamaBirlestir,
+  ogrenciYoklamaDegistir, oturumAnahtari, tasinanKayit, ozet, pazartesi, programdaVar, programOturumlari, sinirHesapla, trIso, yokAyarCoz, yoklamaBirlestir,
   YOK_DURUM, YOK_TUR, type YokDurum, type YoklamaKaydi, type YokTur
 } from './yoklama-kurallari';
 
@@ -241,8 +241,11 @@ export async function yoklamaOgrenciGuncelle(p: { anahtar: string; no: string; y
 }
 
 /* ---------- Hocanın yoklama dökümü (PDF) ---------- */
-/** Hücre: G geldi, Y yok, I izinli (yok ama izinli), '' o gün listede değil; ders yapılmadıysa oturumun durumu "Yapılmadı". */
-export type DokumHucre = 'G' | 'Y' | 'I' | '';
+/**
+ * Hücre: G geldi, Y yok, I izinli (yok ama izinli), '' o gün listede değil; ders yapılmadıysa oturumun durumu "Yapılmadı".
+ * Küçük harf (g, y, i): sınıf değiştiren öğrencinin önceki sınıfındaki yoklamasından taşındı.
+ */
+export type DokumHucre = 'G' | 'Y' | 'I' | 'g' | 'y' | 'i' | '';
 
 /**
  * Bir öğretim elemanının tarih aralığında girilmiş bütün yoklamaları, sınıf sınıf (sınıf listesi sırasıyla).
@@ -270,16 +273,35 @@ export async function hocaYoklamaDokumu(teacher: string, basHam?: string, bitHam
     const ia = siniflar.findIndex(s => s.ad === a), ib = siniflar.findIndex(s => s.ad === b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, 'tr');
   });
+  // Sınıf değiştiren öğrenci yalnızca şu anki sınıfının tablosunda yer alır (o sınıf da dökümdeyse); eski yoklamaları oraya taşınır
+  const simdiki = new Map(siniflar.flatMap(s => s.ogrenciler.map(o => [o.no, s.ad] as const)));
+  const raporda = new Set(sinifAdlari);
+  const kendi = (no: string) => k.filter(x => x.liste.includes(no));
+  const hucre = (x: Kayit, no: string, yok: string[]): DokumHucre => !yok.includes(no) ? 'G' : x.izinli.includes(no) ? 'I' : 'Y';
   return {
     teacher: teacher.trim(), bas: isoTr(bas), bit: isoTr(bit), olusturma: zamanYaz(new Date()),
     siniflar: sinifAdlari.map(ad => {
       const ks = k.filter(x => x.sinif === ad), s = siniflar.find(z => z.ad === ad);
       const sira = (s?.ogrenciler ?? []).map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi }));
-      ks.forEach(x => x.liste.forEach(n => { if (!sira.some(o => o.no === n)) { const o = isim.get(n) ?? s?.ogrenciler.find(z => z.no === n); sira.push({ no: n, adi: o?.adi ?? '', soyadi: o?.soyadi ?? '' }); } }));
-      const hucre = (x: Kayit, no: string, yok: string[]): DokumHucre => !x.liste.includes(no) ? '' : !yok.includes(no) ? 'G' : x.izinli.includes(no) ? 'I' : 'Y';
+      ks.forEach(x => x.liste.forEach(n => {
+        const yeni = simdiki.get(n);
+        if (sira.some(o => o.no === n) || (yeni && yeni !== ad && raporda.has(yeni))) return;
+        const o = isim.get(n) ?? s?.ogrenciler.find(z => z.no === n);
+        sira.push({ no: n, adi: o?.adi ?? '', soyadi: o?.soyadi ?? '' });
+      }));
       const ogrenciler = sira.map(o => {
-        const h = ks.map(x => (x.durum === YOK_DURUM.YAPILMADI ? ['', ''] as [DokumHucre, DokumHucre] : [hucre(x, o.no, x.yok1), hucre(x, o.no, x.yok2)] as [DokumHucre, DokumHucre]));
-        return { ...o, h, yok: h.reduce((t, [a, b]) => t + Number(a === 'Y') + Number(b === 'Y'), 0) };
+        const kayitlari = kendi(o.no), eskiler = kayitlari.filter(x => x.sinif !== ad);
+        const h = ks.map(x => {
+          if (x.durum === YOK_DURUM.YAPILMADI) return ['', ''] as [DokumHucre, DokumHucre];
+          if (x.liste.includes(o.no)) return [hucre(x, o.no, x.yok1), hucre(x, o.no, x.yok2)] as [DokumHucre, DokumHucre];
+          const e = eskiler.length ? tasinanKayit(x, ks, eskiler) : null;
+          if (!e || e.durum === YOK_DURUM.YAPILMADI) return ['', ''] as [DokumHucre, DokumHucre];
+          return [hucre(e, o.no, e.yok1).toLowerCase(), hucre(e, o.no, e.yok2).toLowerCase()] as [DokumHucre, DokumHucre];
+        });
+        // Toplam, öğrencinin bu hocadaki bütün gerçek kayıtlarından (taşınamayan eski dersler de sayılır)
+        const yok = kayitlari.filter(x => x.durum !== YOK_DURUM.YAPILMADI && !x.izinli.includes(o.no))
+          .reduce((t, x) => t + Number(x.yok1.includes(o.no)) + Number(x.yok2.includes(o.no)), 0);
+        return { ...o, h, yok, tasindi: eskiler.length > 0 && !!simdiki.get(o.no) && simdiki.get(o.no) === ad };
       });
       return {
         ad, oturumlar: ks.map(x => ({ tarih: isoTr(x.iso), gun: gunAdi(x.iso), saat: x.saat, ders: x.ders, tur: x.tur, yapilmadi: x.durum === YOK_DURUM.YAPILMADI })),

@@ -52,6 +52,9 @@ const CSS = `
 .m.G{background:#e3f3e9; color:#1f6b43;}
 .m.Y{background:#b42318; color:#fff;}
 .m.I{background:#fdf0dc; color:#9a5a12;}
+.m.T{border:.35mm solid #2f318d;}
+.m.Y.T{background:#fbe1de; color:#b42318;}
+.yd .tasindi-not{font-size:6pt; font-weight:600; color:#2f318d; margin-left:1.2mm;}
 .yd td.yok-ders{background:#e6e8ef !important;}
 .yd td.liste-disi{background:#f6f7fa !important;}
 .yd-ayak{display:flex; justify-content:space-between; align-items:center; gap:6mm; margin-top:2.4mm; font-size:7pt; color:#8a8da8;}
@@ -60,7 +63,13 @@ const CSS = `
 .yd-lejant i{display:inline-block; width:4mm; height:3mm; border-radius:.6mm;}
 `;
 
-const isaret = (h: DokumHucre) => (h === 'G' ? '<span class="m G">✓</span>' : h === 'Y' ? '<span class="m Y">✕</span>' : h === 'I' ? '<span class="m I">İ</span>' : '');
+const IKON: Record<string, string> = { G: '✓', Y: '✕', I: 'İ' };
+/** Küçük harf: önceki sınıfındaki yoklamadan taşındı (çerçeveli gösterilir). */
+const isaret = (h: DokumHucre) => {
+  if (!h) return '';
+  const b = h.toUpperCase();
+  return `<span class="m ${b}${h !== b ? ' T' : ''}">${IKON[b]}</span>`;
+};
 /** En çok n'lik eşit parçalar (31, n=30 → 16+15; 11, n=10 → 6+5). */
 function parcala<T>(l: T[], n: number): T[][] {
   if (!l.length) return [[]];
@@ -95,7 +104,7 @@ function sayfaHtml(d: HocaYoklamaDokumu, p: Sayfa, no: number, toplam: number, l
     (sonDers ? '<th rowspan="2" class="ayrac">Yok<br>(saat)</th>' : '') + '</tr>';
   const bas2 = '<tr>' + p.dersler.map(() => '<th class="alt ayrac">1</th><th class="alt">2</th>').join('') + '</tr>';
   const govde = p.satirlar.map((o, i) => '<tr>' +
-    `<td class="sira">${p.satirBas + i + 1}</td><td class="no">${esc(o.no)}</td><td class="ad">${esc((o.adi + ' ' + o.soyadi).trim() || '—')}</td>` +
+    `<td class="sira">${p.satirBas + i + 1}</td><td class="no">${esc(o.no)}</td><td class="ad">${esc((o.adi + ' ' + o.soyadi).trim() || '—')}${o.tasindi ? '<span class="tasindi-not">sınıf değişti</span>' : ''}</td>` +
     p.dersler.map((x, k) => {
       const [a, b] = o.h[p.dersBas + k];
       const sinifi = (h: DokumHucre) => (x.yapilmadi ? ' yok-ders' : h === '' ? ' liste-disi' : '');
@@ -111,7 +120,7 @@ function sayfaHtml(d: HocaYoklamaDokumu, p: Sayfa, no: number, toplam: number, l
       <span class="yd-cip">${yapilan} ders${s.oturumlar.length > yapilan ? ` · ${s.oturumlar.length - yapilan} yapılmadı` : ''}</span>
       <span class="yd-cip${s.toplamYok ? ' kirmizi' : ''}">${s.toplamYok} saat devamsızlık</span>${p.parca ? `<span class="yd-cip">${p.parca}</span>` : ''}</div>
     <div class="yd-tablo-kap"><table><colgroup>${col}</colgroup><thead>${bas1}${bas2}</thead><tbody>${govde}</tbody></table></div>
-    <div class="yd-ayak"><div class="yd-lejant"><span><span class="m G">✓</span> Geldi</span><span><span class="m Y">✕</span> Gelmedi</span><span><span class="m I">İ</span> İzinli</span>
+    <div class="yd-ayak"><div class="yd-lejant"><span><span class="m G">✓</span> Geldi</span><span><span class="m Y">✕</span> Gelmedi</span><span><span class="m I">İ</span> İzinli</span><span><span class="m G T">✓</span> Önceki sınıfındaki yoklamadan taşındı</span>
       <span><i style="background:#e6e8ef"></i> Ders yapılmadı</span><span><i style="background:#f6f7fa; border:.2mm solid #e3e5ef"></i> O gün listede değil</span></div>
       <div>Oluşturma: ${esc(d.olusturma)} · Sayfa ${no}/${toplam}</div></div>
   </div>`;

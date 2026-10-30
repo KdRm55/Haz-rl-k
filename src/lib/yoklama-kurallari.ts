@@ -217,3 +217,14 @@ export function ogrenciYoklamaDegistir(k: Pick<YoklamaKaydi, 'liste' | 'yok1' | 
   const ayarla = (l: string[], var_: boolean) => (var_ ? (l.includes(no) ? l : [...l, no]) : l.filter(n => n !== no));
   return { liste: k.liste.includes(no) ? k.liste : [...k.liste, no], yok1: ayarla(k.yok1, yok1), yok2: ayarla(k.yok2, yok2) };
 }
+
+/**
+ * Sınıf değiştiren öğrenci için yeni sınıfın bir oturumuna karşılık gelen eski sınıf kaydı: aynı haftanın aynı sıradaki dersi
+ * (sınıfların ders günleri farklı olduğundan tarih eşleşmez; ör. A'nın haftadaki 1. dersi → B'nin haftadaki 1. dersi).
+ */
+export function tasinanKayit<T extends { iso: string; saat: string }>(hedef: T, hedefler: T[], eskiler: T[]): T | null {
+  const h = pazartesi(hedef.iso);
+  const sirala = (l: T[]) => l.filter(x => pazartesi(x.iso) === h).sort((a, b) => a.iso.localeCompare(b.iso) || a.saat.localeCompare(b.saat, 'tr'));
+  const i = sirala(hedefler).indexOf(hedef);
+  return i < 0 ? null : sirala(eskiler)[i] ?? null;
+}

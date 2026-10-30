@@ -155,3 +155,17 @@ describe('öğrenciye göre yoklama düzeltme', () => {
     expect(ogrenciYoklamaDegistir(k, '2', true, true)).toEqual(k);
   });
 });
+
+describe('sınıf değiştiren öğrencinin yoklaması', () => {
+  it('aynı haftanın aynı sıradaki dersine eşlenir', async () => {
+    const { tasinanKayit } = await import('@/lib/yoklama-kurallari');
+    // Eski sınıf (A): Pazartesi ve Perşembe · Yeni sınıf (B): Pazartesi ve Salı
+    const a1 = { iso: '2026-09-21', saat: '13.00-15.00' }, a2 = { iso: '2026-09-24', saat: '13.00-15.00' }, a3 = { iso: '2026-09-28', saat: '13.00-15.00' };
+    const b1 = { iso: '2026-09-21', saat: '15.00-17.00' }, b2 = { iso: '2026-09-22', saat: '13.00-15.00' }, b3 = { iso: '2026-09-28', saat: '15.00-17.00' }, b4 = { iso: '2026-09-29', saat: '13.00-15.00' };
+    const yeni = [b1, b2, b3, b4], eski = [a1, a2, a3];
+    expect(tasinanKayit(b1, yeni, eski)).toBe(a1);
+    expect(tasinanKayit(b2, yeni, eski)).toBe(a2);   // Salı ↔ Perşembe: haftanın 2. dersi
+    expect(tasinanKayit(b3, yeni, eski)).toBe(a3);
+    expect(tasinanKayit(b4, yeni, eski)).toBeNull(); // o hafta eski sınıfta 2. ders yok (öğrenci taşınmış)
+  });
+});
