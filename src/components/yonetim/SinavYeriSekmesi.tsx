@@ -1,9 +1,9 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { syDurumIslemi, syFarkIslemi, syGuncelleIslemi, syKaydetIslemi, syOnizleIslemi, sySilIslemi, syTaniIslemi, syYayinIslemi } from '@/app/yonetim/islemler';
+import { ogrenciListesiIslemi, syDurumIslemi, syFarkIslemi, syGuncelleIslemi, syKaydetIslemi, syOnizleIslemi, sySilIslemi, syTaniIslemi, syYayinIslemi } from '@/app/yonetim/islemler';
 import type { SyMeta } from '@/lib/donem-kurallari';
-import { dosyaOku } from '@/lib/dosya-oku';
+import { dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import type { Sonuc } from '@/lib/islem-sonucu';
 import type { SyDurum, SyFarki, SyTani } from '@/lib/sinav-yeri';
 import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
@@ -14,6 +14,7 @@ const ALANLAR = [
   ['no', 'Öğrenci No *'], ['salon', 'Sınav salonu *'], ['sira', 'Sıra no'], ['adi', 'Adı'], ['soyadi', 'Soyadı'], ['adSoyad', 'Adı Soyadı (tek sütun)'],
   ['kitapcik', 'Kitapçık türü'], ['sinavAdi', 'Sınav adı'], ['sinavKodu', 'Sınav kodu'], ['tarih', 'Sınav tarihi'], ['saat', 'Sınav saati'], ['yer', 'Sınav yeri (bina)']
 ] as const;
+const SABLON_BASLIK = ['Öğrenci No', 'Adı', 'Soyadı', 'Sınıf', 'Sınav Salonu', 'Sıra No', 'Kitapçık Türü', 'Sınav Adı', 'Sınav Tarihi', 'Sınav Saati', 'Sınav Yeri'];
 const trIso = (t: string) => { const m = String(t || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
 const isoTr = (i: string) => { const m = String(i || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}.${m[2]}.${m[1]}` : i; };
 const bosMeta: SyMeta = { ad: '', sinavKodu: '', tarih: '', saat: '', yer: '', aciklama: '', donemKod: '' };
@@ -74,6 +75,18 @@ function Yukleme({ d, hedef, setHedef, bitti, mesaj }: { d: SyDurum; hedef: List
       if (e.no > -1 && e.salon > -1) await denetle(e, s, r.veri);
     } catch (e) { setDurum('Dosya okunamadı: ' + (e instanceof Error ? e.message : String(e))); }
   }
+  async function sablonIndir(dolu: boolean) {
+    let ogr: string[][] = [];
+    if (dolu) {
+      setDurum('Şablon hazırlanıyor…');
+      const r = await cagir(ogrenciListesiIslemi());
+      if (!r.ok) { setDurum(r.hata); return; }
+      ogr = r.veri.ogrenciler.filter(o => o.durum === 'aktif' && o.sinif).map(o => [o.no, o.adi, o.soyadi, o.sinif]);
+    }
+    await xlsxIndir('Sinav_Yeri_Sablon.xlsx', 'Sınav Yerleri', [SABLON_BASLIK, ...ogr], [14, 18, 18, 16, 16, 10, 14, 24, 14, 12, 18]);
+    setDurum(dolu ? `Sinav_Yeri_Sablon.xlsx indirildi (${ogr.length} öğrenci). Salon ve sıra numaralarını doldurup buradan yükleyin; salonu boş kalan satırlar alınmaz.`
+      : 'Sinav_Yeri_Sablon.xlsx indirildi. Öğrenci No ve Sınav Salonu zorunludur; Sınav Adı, Tarihi, Saati ve Yeri boş bırakılırsa yüklerken yazılabilir.');
+  }
   async function kaydet() {
     if (!m.ad.trim()) { alert('Sınavın adını yazın.'); return; }
     setBekliyor(true);
@@ -91,9 +104,11 @@ function Yukleme({ d, hedef, setHedef, bitti, mesaj }: { d: SyDurum; hedef: List
   return (
     <div className="adim">
       <div className="bolum-baslik">Sınav yeri listesi yükle</div>
-      <p className="aciklama">Kelebek sistemden aldığınız yerleşim listesini (Excel ya da CSV) yükleyin. Öğrenci numarası, salon ve sıra numarası okunur; yayınladığınızda öğrenciler numaralarıyla salonlarını ve sıralarını görür. Kitapçık türü saklanır ama öğrenciye gösterilmez. Sistemde kaydı olmayan öğrenci de numarasıyla yerini görür.</p>
+      <p className="aciklama">Kelebek sistemden aldığınız yerleşim listesini (Excel ya da CSV) ya da doldurduğunuz şablonu yükleyin. &quot;Öğrencilerle şablon&quot; sınıftaki aktif öğrencileri yazılı verir; salon ve sıra sütunlarını doldurmanız yeter. Öğrenci numarası, salon ve sıra numarası okunur; yayınladığınızda öğrenciler numaralarıyla salonlarını ve sıralarını görür. Kitapçık türü saklanır ama öğrenciye gösterilmez. Sistemde kaydı olmayan öğrenci de numarasıyla yerini görür.</p>
       <div className="dosya-satir">
         <input ref={dosyaRef} type="file" accept=".xlsx,.csv" onChange={e => dosya(e.target.files?.[0])} />
+        <button type="button" className="btn btn-secondary" onClick={() => sablonIndir(false)}>📄 Boş şablon</button>
+        <button type="button" className="btn btn-secondary" onClick={() => sablonIndir(true)}>📄 Öğrencilerle şablon</button>
         {hedef && <span className="hint">Yüklenecek dosya &quot;{hedef.ad}&quot; ({hedef.kod}) listesinin yerine geçecek; yayın durumu korunur. <button type="button" className="btn btn-secondary btn-kucuk" onClick={() => setHedef(null)}>Vazgeç</button></span>}
       </div>
       {durum && <div className="hint" style={{ textAlign: 'left', marginTop: 8 }}>{durum}</div>}

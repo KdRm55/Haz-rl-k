@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { programKaydetIslemi, programListesiIslemi } from '@/app/yonetim/islemler';
-import { csvIndir, dosyaOku } from '@/lib/dosya-oku';
+import { csvIndir, dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import { basNorm, sinifAnahtari, subeEslestir, TR_GUN_SIRA } from '@/lib/metin';
 import { programTablosuOku, type ProgramSatiri } from '@/lib/program-kurallari';
 import { Mesaj, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
@@ -54,10 +54,11 @@ export function ProgramSekmesi() {
     <section>
       <div className="adim">
         <div className="bolum-baslik">Ders programı</div>
-        <p className="aciklama">Her satır bir ders saatidir. Şube, sınıf adıyla (&quot;Hazırlık A&quot;) ya da kısaca (&quot;A&quot;) yazılabilir. Programı Excel&apos;den de yükleyebilirsiniz (sütunlar: Hoca Adı, Ders, Gün, Saat, Şube, Derslik). Değişiklikler &quot;Programı kaydet&quot;e basınca geçerli olur.</p>
+        <p className="aciklama">Her satır bir ders saatidir. Şube, sınıf adıyla (&quot;Hazırlık A&quot;) ya da kısaca (&quot;A&quot;) yazılabilir. Programı Excel&apos;den de yükleyebilirsiniz: &quot;Şablon indir&quot; ekrandaki programı Excel olarak verir (program boşsa yalnızca başlıklar); düzenleyip &quot;Excel&apos;den yükle&quot; ile geri yükleyin (sütunlar: Hoca Adı, Ders, Gün, Saat, Şube, Derslik). Değişiklikler &quot;Programı kaydet&quot;e basınca geçerli olur.</p>
         <div className="actions">
           <button className="btn btn-primary" type="button" onClick={kaydet} disabled={!degisti || bekliyor}>{bekliyor ? 'Kaydediliyor…' : 'Programı kaydet'}</button>
           {degisti && <button className="btn btn-secondary" type="button" onClick={() => setSatirlar(veri.satirlar)}>Değişiklikleri geri al</button>}
+          <button className="btn btn-secondary" type="button" onClick={() => xlsxIndir('Ders_Programi_Sablon.xlsx', 'Ders Programı', [BASLIK, ...satirlar.map(r => [r.hoca, r.ders, r.gun, r.saat, r.sube, r.derslik])], [28, 26, 12, 16, 14, 12])}>📄 Şablon indir</button>
           <label className="btn btn-secondary" style={{ cursor: 'pointer' }}>⬆️ Excel&apos;den yükle<input type="file" accept=".xlsx,.csv" hidden onChange={e => { excelden(e.target.files?.[0]); e.target.value = ''; }} /></label>
           <button className="btn btn-secondary" type="button" onClick={() => csvIndir('Ders_Programi.csv', BASLIK, satirlar.map(r => [r.hoca, r.ders, r.gun, r.saat, r.sube, r.derslik]))}>⬇️ CSV indir</button>
         </div>

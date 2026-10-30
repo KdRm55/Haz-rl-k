@@ -23,6 +23,7 @@ export async function aktarimGecmisiIslemi() { return sar(() => aktarim.aktarimG
 export async function ogrenciListesiIslemi() { return sar(() => y.ogrenciListesi()); }
 export async function disaAktarimIslemi() { return sar(() => y.disaAktarimListesi()); }
 export async function ogrenciGuncelleIslemi(no: string, v: Parameters<typeof y.ogrenciGuncelle>[1]) { return sar(() => y.ogrenciGuncelle(no, v)); }
+export async function ogrenciEkleIslemi(v: y.OgrenciEklemeGirdisi) { return sar(() => y.ogrenciEkle(v)); }
 export async function ogrenciGecmisiIslemi(no: string) { return sar(() => y.ogrenciGecmisi(no)); }
 
 /* Sınıflar ve ders programı */

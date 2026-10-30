@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { disaAktarimIslemi, ogrenciGecmisiIslemi, ogrenciGuncelleIslemi, ogrenciListesiIslemi } from '@/app/yonetim/islemler';
+import { disaAktarimIslemi, ogrenciEkleIslemi, ogrenciGecmisiIslemi, ogrenciGuncelleIslemi, ogrenciListesiIslemi } from '@/app/yonetim/islemler';
 import { csvIndir } from '@/lib/dosya-oku';
 import { basNorm } from '@/lib/metin';
 import type { OgrenciListesi } from '@/lib/yonetim';
@@ -29,6 +29,48 @@ function GecmisPaneli({ o, kapat }: { o: Ogrenci; kapat: () => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+const BOS_FORM = { no: '', adi: '', soyadi: '', cinsiyet: '', sinifId: '', tc: '', bolum: '', not: '' };
+
+/** Liste yüklemeden tek öğrenci ekleme; isteğe bağlı olarak hemen bir sınıfa atanır. */
+function OgrenciEkle({ siniflar, eklendi }: { siniflar: OgrenciListesi['siniflar']; eklendi: (no: string, mesaj: string) => void }) {
+  const cagir = useCagir();
+  const [f, setF] = useState(BOS_FORM);
+  const [m, setM] = useState<MesajDurumu>(null);
+  const [bekliyor, setBekliyor] = useState(false);
+  const alan = (k: keyof typeof BOS_FORM) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF(x => ({ ...x, [k]: e.target.value }));
+  async function ekle(e: React.FormEvent) {
+    e.preventDefault();
+    setBekliyor(true); setM(null);
+    const r = await cagir(ogrenciEkleIslemi({ ...f, sinifId: f.sinifId ? Number(f.sinifId) : null }));
+    setBekliyor(false);
+    if (!r.ok) { setM({ metin: r.hata, hata: true }); return; }
+    setF(x => ({ ...BOS_FORM, sinifId: x.sinifId }));   // art arda aynı sınıfa ekleme kolay olsun
+    eklendi(r.veri.no, `${r.veri.no} ${r.veri.ad} eklendi${r.veri.sinif ? ` ve ${r.veri.sinif} sınıfına atandı` : ''}.` +
+      (r.veri.tcVar ? '' : ' TC girilmediği için öğrenci hesap açamaz; TC’yi sonra liste yükleyerek ekleyebilirsiniz.'));
+  }
+  return (
+    <details className="kural-form" style={{ marginBottom: 14 }}>
+      <summary>+ Öğrenci ekle</summary>
+      <form onSubmit={ekle}>
+        <div className="form-izgara">
+          <label className="alan">Öğrenci numarası *<input type="text" inputMode="numeric" value={f.no} onChange={alan('no')} required /></label>
+          <label className="alan">Adı *<input type="text" value={f.adi} onChange={alan('adi')} required /></label>
+          <label className="alan">Soyadı *<input type="text" value={f.soyadi} onChange={alan('soyadi')} required /></label>
+          <label className="alan">Cinsiyet<select value={f.cinsiyet} onChange={alan('cinsiyet')}><option value="">—</option><option value="K">K</option><option value="E">E</option></select></label>
+          <label className="alan">Sınıf<select value={f.sinifId} onChange={alan('sinifId')}>
+            <option value="">— Sınıfı yok —</option>{siniflar.map(s => <option key={s.id} value={s.id}>{s.ad}{s.aktif ? '' : ' (pasif)'}</option>)}</select></label>
+          <label className="alan">TC kimlik no (isteğe bağlı)<input type="text" inputMode="numeric" autoComplete="off" maxLength={11} value={f.tc} onChange={alan('tc')} /></label>
+          <label className="alan">Bölüm / program<input type="text" value={f.bolum} onChange={alan('bolum')} /></label>
+          <label className="alan">Not<input type="text" maxLength={500} value={f.not} onChange={alan('not')} /></label>
+        </div>
+        <button className="btn btn-primary" type="submit" disabled={bekliyor}>{bekliyor ? 'Ekleniyor…' : 'Öğrenciyi ekle'}</button>
+        <p className="hint" style={{ textAlign: 'left' }}>TC numarasının tamamı saklanmaz; yalnızca son 6 hanesi tutulur ve öğrenci hesap açarken bununla doğrulanır. Elle eklenen öğrenci öğrenci listesinin parçası sayılır: sonraki liste yüklemesinde dosyada yoksa &quot;listeden çıkan&quot; olarak raporlanır.</p>
+        <Mesaj m={m} />
+      </form>
+    </details>
   );
 }
 
@@ -88,6 +130,7 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
         <button className="btn btn-secondary" type="button" onClick={() => { setDuzen({}); yenile(); }}>🔄 Yenile</button>
       </div>
       <p className="aciklama">Kopyalama ve CSV, aktif sınıflardaki öğrencileri eski biçimle verir (OGR_NO, ADI_SOYADI, CINSIYET, SUBE, SINIF). Aşağıdaki tabloda bir öğrencinin sınıfını, kayıt durumunu, cinsiyetini ya da notunu değiştirip &quot;Kaydet&quot;e basın; her değişiklik geçmişe yazılır.</p>
+      <OgrenciEkle siniflar={veri.siniflar} eklendi={async (no, m) => { setMesaj({ metin: m }); setAra(no); setDurumF('aktif'); setSinifF('tum'); await yenile(); degisti(); }} />
       <Mesaj m={mesaj} />
       <div className="filtre">
         <input type="search" placeholder="Numara ya da ad ile ara" value={ara} onChange={e => setAra(e.target.value)} aria-label="Öğrenci ara" />

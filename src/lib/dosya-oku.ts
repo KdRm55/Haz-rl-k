@@ -41,6 +41,16 @@ export async function dosyaOku(f: File): Promise<OkunanDosya> {
   return { ad: f.name, sayfalar: kitap.sayfalar, satirlar: kitap.satirlar };
 }
 
+/** Yükleme şablonu: ilk satır başlık olmak üzere tabloyu .xlsx olarak tarayıcıda hazırlayıp indirir. */
+export async function xlsxIndir(ad: string, sayfa: string, satirlar: (string | number)[][], genislikler: number[] = []) {
+  const { xlsxYaz } = await import('./xlsx-yaz');
+  const veri = await xlsxYaz(sayfa, satirlar, genislikler.length ? genislikler : satirlar[0].map(b => Math.max(12, String(b).length + 4)));
+  const url = URL.createObjectURL(new Blob([veri as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a'); a.href = url; a.download = ad;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 /** Tabloyu Excel'in Türkçe ayarlarıyla açılabilecek CSV olarak indirir (UTF-8 BOM, noktalı virgül). */
 export function csvIndir(ad: string, basliklar: string[], satirlar: (string | number)[][]) {
   const k = (v: string | number) => { const s = String(v ?? ''); return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };

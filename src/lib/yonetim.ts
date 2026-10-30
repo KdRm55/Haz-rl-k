@@ -12,6 +12,7 @@ import { KOD_EN_AZ, kodDogru, kodOzeti } from './kod';
 import { basNorm, cinsiyetKod, hazirlikMi, sinifAnahtari, sinifTuru, TR_GUN_SIRA } from './metin';
 import { ayarlarOku, ogrenciAra } from './ogrenci';
 import { duyuruGecerli, gorunum, HEDEF } from './ogrenci-kurallari';
+import { tcSon6 } from './hesap-kurallari';
 import { islemKaydet, yetkiGerekli } from './oturum';
 import { taslaktaSabitle } from './siniflandirma';
 
@@ -195,6 +196,55 @@ export async function ogrenciGuncelle(no: string, v: { sinifId?: number | null; 
   });
   await islemKaydet('Öğrenci düzenleme', `${o.no} ${ad}: ${log.map(l => l[0]).join(', ')}`);
   return { degisti: true };
+}
+
+export type OgrenciEklemeGirdisi = { no: string; adi: string; soyadi: string; cinsiyet?: string; tc?: string; bolum?: string; sinifId?: number | null; not?: string };
+
+/**
+ * Panelden tek öğrenci ekler (liste yüklemeden). TC kimlik numarasının tamamı saklanmaz: son 6 hanesi (hesap açma) ve son 4 hanesi.
+ * Öğrenci, öğrenci listesinin bir parçası sayılır; sonraki liste yüklemesinde dosyada yoksa "listeden çıkan" olarak raporlanır.
+ */
+export async function ogrenciEkle(v: OgrenciEklemeGirdisi) {
+  await yonetici();
+  const no = String(v?.no ?? '').replace(/\s+/g, '');
+  const adi = String(v?.adi ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
+  const soyadi = String(v?.soyadi ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
+  if (!/^\d{3,20}$/.test(no)) throw new KullaniciHatasi('Öğrenci numarası yalnızca rakamlardan oluşmalı.');
+  if (!adi || !soyadi) throw new KullaniciHatasi('Adı ve soyadı yazın.');
+  const tcHam = String(v?.tc ?? '').replace(/\D/g, '');
+  if (tcHam && tcHam.length < 6) throw new KullaniciHatasi('TC kimlik numarasını ya da en az son 6 hanesini yazın (boş bırakılabilir).');
+  const tc6 = tcSon6(tcHam);
+  const cinsiyet = cinsiyetKod(v?.cinsiyet);
+  const db = vt();
+  const [var_] = await db.select().from(schema.ogrenciler).where(eq(schema.ogrenciler.no, no));
+  if (var_) {
+    throw new KullaniciHatasi(var_.durum === 'silindi'
+      ? `${no} numaralı öğrenci zaten kayıtlı (${var_.adi} ${var_.soyadi}), kaydı silinmiş. "Kaydı silinenler" filtresinden bulup durumunu "Aktif" yapın.`
+      : `${no} numaralı öğrenci zaten kayıtlı: ${var_.adi} ${var_.soyadi}.`);
+  }
+  const siniflar = await db.select().from(schema.siniflar);
+  const sinif = v?.sinifId != null ? siniflar.find(s => s.id === Number(v.sinifId)) : undefined;
+  if (v?.sinifId != null && !sinif) throw new KullaniciHatasi('Sınıf bulunamadı. Listeyi yenileyin.');
+  const simdi = new Date(), ad = adi + ' ' + soyadi;
+  await db.transaction(async tx => {
+    let sinifSira: number | null = null;
+    if (sinif) {
+      const [{ n }] = await tx.select({ n: count() }).from(schema.ogrenciler).where(eq(schema.ogrenciler.sinifId, sinif.id));
+      sinifSira = n + 1;   // sınıf listesinin sonuna eklenir
+    }
+    await tx.insert(schema.ogrenciler).values({
+      no, adi, soyadi, cinsiyet, tc6, tc4: tc6.slice(-4), bolum: String(v?.bolum ?? '').trim().slice(0, 150), not: String(v?.not ?? '').trim().slice(0, 500),
+      durum: 'aktif', kayitli: true, sinifId: sinif?.id ?? null, sinifSira, ilkGorulme: simdi, guncellendi: simdi
+    });
+    // Sınıfı elle verilen öğrenci taslakta da sabitlenir; sonraki "Yeniden dağıt" yerini bozmaz
+    if (sinif) await taslaktaSabitle(tx, no, sinif.ad);
+    await tx.insert(schema.ogrenciDegisiklikleri).values([
+      { kaynak: 'Elle', ogrenciNo: no, adSoyad: ad, alan: 'Kayıt durumu', eski: '', yeni: 'Yeni kayıt (panelden eklendi)' },
+      ...(sinif ? [{ kaynak: 'Elle', ogrenciNo: no, adSoyad: ad, alan: 'Sınıf', eski: '', yeni: sinif.ad }] : [])
+    ]);
+  });
+  await islemKaydet('Öğrenci ekleme', `${no} ${ad}${sinif ? ' → ' + sinif.ad : ''}${tc6 ? '' : ' (TC yok)'}`);
+  return { no, ad, sinif: sinif?.ad ?? '', tcVar: !!tc6 };
 }
 
 export async function ogrenciGecmisi(no: string) {

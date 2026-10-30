@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dsPuanFarkIslemi, dsPuanKaydetIslemi, dsPuanOnizleIslemi, dsPuanTablosuIslemi, dsPuanUygulaIslemi } from '@/app/yonetim/islemler';
 import type { DsDurum, DsPuanFarki, DsPuanTablosu } from '@/lib/donem-sinav';
-import { csvIndir, dosyaOku } from '@/lib/dosya-oku';
+import { csvIndir, dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import { basNorm } from '@/lib/metin';
 import { ListeTablosu, Mesaj, OzetKutu, useCagir, type MesajDurumu } from './ortak';
 
@@ -99,6 +99,16 @@ export function DonemPuanYukleme({ x, mesaj, bitti }: { x: DsDurum['sinavlar'][n
         ...Object.fromEntries(Object.entries(r.veri.eslesme.dersKolon).map(([d, i]) => ['ders:' + d, i])) });
     } catch (e) { setDurum('Dosya okunamadı: ' + (e instanceof Error ? e.message : String(e))); }
   }
+  async function sablonIndir() {
+    setDurum('Şablon hazırlanıyor…');
+    const r = await cagir(dsPuanTablosuIslemi(x.kod));
+    if (!r.ok) { setDurum(r.hata); return; }
+    const t = r.veri, puan = (v: string | undefined) => (v && /^\d+(\.\d+)?$/.test(v) ? Number(v) : v ?? '');
+    const ad = `Donem_Sinavi_${t.kod}_Sablon.xlsx`;
+    await xlsxIndir(ad, 'Puanlar', [['Öğrenci No', 'Adı', 'Soyadı', 'Sınıf', ...t.dersler], ...t.ogrenciler.map(o => [o.no, o.adi, o.soyadi, o.sinif, ...t.dersler.map(d => puan(o.p[d]))])],
+      [14, 18, 18, 16, ...t.dersler.map(d => Math.max(10, d.length + 4))]);
+    setDurum(`${ad} indirildi (${t.ogrenciler.length} öğrenci). Girilmiş puanlar dolu gelir; boş hücreleri doldurup buradan yükleyin.`);
+  }
   const veri = (u = uzerine, a = adYaz) => ({
     sinavKod: x.kod, satirlar, basSatir: oniz!.basSatir, dosyaAdi, uzerineYaz: u, adUyusmazYaz: a,
     eslesme: { no: es.no, adi: es.adi, soyadi: es.soyadi, adSoyad: es.adSoyad, dersKolon: Object.fromEntries(oniz!.dersler.map(d => [d, es['ders:' + d] ?? -1])) }
@@ -127,8 +137,11 @@ export function DonemPuanYukleme({ x, mesaj, bitti }: { x: DsDurum['sinavlar'][n
   return (
     <div className="ds-alt-bolum">
       <h4>Puan listesi yükle — {x.ad}</h4>
-      <p className="aciklama" style={{ margin: '0 0 8px' }}>Excel ya da CSV. Numaraya göre eşleştirilir; ad uyuşmazlığı, hatalı puan ve dolu puanın üzerine yazma ayrıca onay ister. Sınava girmeyene G yazın.</p>
-      <input type="file" accept=".xlsx,.csv" onChange={e => dosya(e.target.files?.[0])} />
+      <p className="aciklama" style={{ margin: '0 0 8px' }}>Excel ya da CSV; sınavın öğrenci listesiyle hazırlanmış şablonu da indirebilirsiniz. Numaraya göre eşleştirilir; ad uyuşmazlığı, hatalı puan ve dolu puanın üzerine yazma ayrıca onay ister. Sınava girmeyene G yazın.</p>
+      <div className="dosya-satir">
+        <input type="file" accept=".xlsx,.csv" onChange={e => dosya(e.target.files?.[0])} />
+        <button className="btn btn-secondary" type="button" onClick={sablonIndir}>📄 Puan şablonu indir</button>
+      </div>
       {durum && <div className="hint" style={{ textAlign: 'left', marginTop: 8 }}>{durum}</div>}
       {oniz && (
         <>
