@@ -1,9 +1,10 @@
 'use client';
 
-/** Kişisel hesap formları: giriş, öğrenci ve hoca hesabı oluşturma, şifre değiştirme (üç ekran ortak). */
+/** Kişisel hesap formları: giriş, öğrenci ve hoca hesabı oluşturma, şifre değiştirme, KVKK onayı (üç ekran ortak). */
 import { startTransition, useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { cikisIslemi, girisIslemi, hocaKayitIslemi, ogrenciKayitIslemi, sifreDegistirIslemi, type GirisDurumu } from '@/app/giris-islemleri';
+import { cikisIslemi, girisIslemi, hocaKayitIslemi, kvkkOnayIslemi, ogrenciKayitIslemi, sifreDegistirIslemi, type GirisDurumu } from '@/app/giris-islemleri';
+import { KVKK_BASLIK, KVKK_BOLUMLER, KVKK_GIRIS, KVKK_ONAY_METNI } from '@/lib/kvkk';
 import type { Sayfa } from '@/lib/oturum';
 
 export const HF_CSS = `
@@ -22,6 +23,16 @@ export const HF_CSS = `
 .hf-sekme button[aria-selected=true]{color:#2F318D; border-bottom-color:#2F318D;}
 .hf-baglanti{background:none; border:0; color:#2F318D; font-weight:600; cursor:pointer; padding:0; font-size:13px; text-decoration:underline; font-family:inherit; width:auto; margin:0; box-shadow:none;}
 .hf-kutu{border:1px solid #D9DBE8; border-radius:12px; padding:16px; background:#fff; max-width:440px;}
+.hf .hf-onay{display:flex; gap:10px; align-items:flex-start; font-size:13.5px; font-weight:500; line-height:1.45; cursor:pointer; margin:0;}
+.hf .hf-onay input{width:18px; height:18px; flex:none; margin:1px 0 0; padding:0; accent-color:#2F318D; cursor:pointer;}
+.kvkk{border:1px solid #D9DBE8; border-radius:12px; background:#F7F8FC; padding:14px 16px; text-align:left; color:#1C1D3A; font-size:13.5px; line-height:1.55;}
+.kvkk.kaydir{max-height:340px; overflow-y:auto;}
+.kvkk h2{font-size:16px; margin:0 0 6px; color:#2F318D;}
+.kvkk h3{font-size:14px; margin:14px 0 4px; color:#2F318D;}
+.kvkk p{margin:0 0 6px;}
+.kvkk ul{margin:0 0 6px; padding-left:18px;}
+.kvkk li{margin:0 0 5px;}
+.kvkk-guven{display:flex; gap:10px; align-items:flex-start; background:#EEF7F1; border:1px solid #C6E3D0; border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.45; color:#1F4D33; margin:0 0 10px; text-align:left;}
 `;
 
 /** Başarılı işlemden sonra sunucu sayfası yeniden çizilir (oturum açıldı / şifre değişti). */
@@ -39,6 +50,33 @@ const gonderici = (gonder: (f: FormData) => void) => (e: React.FormEvent<HTMLFor
   const f = new FormData(e.currentTarget);
   startTransition(() => gonder(f));
 };
+
+/** KVKK aydınlatma metni (kvkk.ts). */
+export function KvkkMetni({ kaydir }: { kaydir?: boolean }) {
+  return (
+    <div className={'kvkk' + (kaydir ? ' kaydir' : '')} tabIndex={kaydir ? 0 : undefined} aria-label={KVKK_BASLIK}>
+      <h2>{KVKK_BASLIK}</h2>
+      <p>{KVKK_GIRIS}</p>
+      {KVKK_BOLUMLER.map(b => (
+        <section key={b.baslik}>
+          <h3>{b.baslik}</h3>
+          {b.paragraflar?.map((p, i) => <p key={i}>{p}</p>)}
+          {b.maddeler && <ul>{b.maddeler.map((m, i) => <li key={i}>{m}</li>)}</ul>}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** Şifre ve TC'nin nasıl korunduğunu tek bakışta anlatan kısa not. */
+function GuvenNotu() {
+  return (
+    <div className="kvkk-guven">
+      <span aria-hidden="true">🔒</span>
+      <span>Şifren ve TC kimlik numaranın son haneleri geri çevrilemez biçimde şifrelenerek saklanır. Sunucular ele geçirilse bile kimse bunları okuyamaz; yöneticiler de göremez.</span>
+    </div>
+  );
+}
 
 function Mesaj({ d }: { d: GirisDurumu }) {
   return <div className={'hf-mesaj' + (d.ok ? ' ok' : '')} role={d.ok ? 'status' : 'alert'}>{d.mesaj}</div>;
@@ -66,9 +104,11 @@ export function GirisFormu({ sayfa, mesaj }: { sayfa: Sayfa; mesaj?: string }) {
 
 export function OgrenciKayitFormu() {
   const [d, gonder, bekliyor] = useActionState<GirisDurumu, FormData>(ogrenciKayitIslemi, { mesaj: '' });
+  const [metin, setMetin] = useState(false);
   useYenile(d);
   return (
     <form onSubmit={gonderici(gonder)} className="hf">
+      <GuvenNotu />
       <div>
         <label htmlFor="okNo">Öğrenci numarası</label>
         <input id="okNo" name="no" type="text" inputMode="numeric" autoComplete="username" required autoFocus />
@@ -87,6 +127,11 @@ export function OgrenciKayitFormu() {
         <label htmlFor="okTekrar">Şifre (tekrar)</label>
         <input id="okTekrar" name="tekrar" type="password" autoComplete="new-password" minLength={8} required />
       </div>
+      <div>
+        <button type="button" className="hf-baglanti" aria-expanded={metin} onClick={() => setMetin(m => !m)}>{metin ? 'Metni gizle' : 'Kişisel verilerin hakkındaki metni oku'}</button>
+        {metin && <div style={{ marginTop: 8 }}><KvkkMetni kaydir /></div>}
+      </div>
+      <label className="hf-onay"><input type="checkbox" name="kvkk" value="evet" required /><span>{KVKK_ONAY_METNI}</span></label>
       <button className="hf-gonder" type="submit" disabled={bekliyor}>{bekliyor ? 'Kontrol ediliyor…' : 'Hesabımı oluştur'}</button>
       <Mesaj d={d} />
     </form>
@@ -128,6 +173,27 @@ export function SifreDegistirFormu({ sayfa, zorunlu, kapat }: { sayfa: Sayfa; zo
       <button className="hf-gonder" type="submit" disabled={bekliyor}>{bekliyor ? 'Kaydediliyor…' : 'Şifreyi değiştir'}</button>
       <Mesaj d={d} />
     </form>
+  );
+}
+
+/** Hesabı olup güncel KVKK metnini onaylamamış öğrenci: onay vermeden sistemi kullanamaz. */
+export function KvkkOnayFormu() {
+  const [d, gonder, bekliyor] = useActionState<GirisDurumu, FormData>(kvkkOnayIslemi, { mesaj: '' });
+  useYenile(d);
+  return (
+    <>
+      <GuvenNotu />
+      <KvkkMetni kaydir />
+      <form onSubmit={gonderici(gonder)} className="hf" style={{ marginTop: 14 }}>
+        <label className="hf-onay"><input type="checkbox" name="kvkk" value="evet" required /><span>{KVKK_ONAY_METNI}</span></label>
+        <button className="hf-gonder" type="submit" disabled={bekliyor}>{bekliyor ? 'Kaydediliyor…' : 'Onaylıyorum, devam et'}</button>
+        <Mesaj d={d} />
+      </form>
+      <form action={cikisIslemi.bind(null, 'ogrenci')} style={{ textAlign: 'center', marginTop: 6 }}>
+        <span style={{ fontSize: 13, color: '#5F6283' }}>Onay vermeden sistemi kullanamazsın. </span>
+        <button type="submit" className="hf-baglanti">Çıkış yap</button>
+      </form>
+    </>
   );
 }
 

@@ -30,7 +30,7 @@ export const ogrenciler = pgTable('ogrenciler', {
   soyadi: text('soyadi').notNull().default(''),
   cinsiyet: text('cinsiyet').notNull().default(''),          // 'K' | 'E' | ''
   tc4: text('tc4').notNull().default(''),                    // TC kimlik numarasının yalnızca son 4 hanesi
-  tc6: text('tc6').notNull().default(''),                    // TC kimlik numarasının son 6 hanesi (hesap açarken kimlik doğrulaması)
+  tc6: text('tc6').notNull().default(''),                    // TC son 6 hanesinin HMAC özeti 'h1:…' (tc-ozeti.ts); hanelerin kendisi saklanmaz
   dogrulamaDegeri: text('dogrulama_degeri').notNull().default(''), // eski DOGRULAMA_SUTUNU düzeni için
   bolum: text('bolum').notNull().default(''),
   eposta: text('eposta').notNull().default(''),
@@ -73,7 +73,9 @@ export const kullanicilar = pgTable('kullanicilar', {
   sifreDegistirmeli: boolean('sifre_degistirmeli').notNull().default(false),   // yöneticinin verdiği geçici şifre
   oturumSurumu: integer('oturum_surumu').notNull().default(1), // şifre değişince ya da hesap kapanınca eski oturumlar düşer
   olusturma: timestamp('olusturma', { withTimezone: true }).notNull().defaultNow(),
-  sonGiris: timestamp('son_giris', { withTimezone: true })
+  sonGiris: timestamp('son_giris', { withTimezone: true }),
+  kvkkOnay: timestamp('kvkk_onay', { withTimezone: true }),     // öğrencinin KVKK aydınlatma metnini onayladığı an
+  kvkkSurum: text('kvkk_surum').notNull().default('')          // onaylanan metnin sürümü (kvkk.ts); metin değişince yeniden onay istenir
 }).enableRLS();
 
 /** Eski ortak erişim kodları (kişisel hesaplardan önce). Artık kullanılmıyor; geçmiş kurulumlar için duruyor. */

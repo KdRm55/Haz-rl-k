@@ -18,7 +18,8 @@
     "db:studio": "drizzle-kit studio",
     "aktar": "tsx scripts/e-tablodan-aktar.ts",
     "yonetici": "tsx scripts/yonetici.ts",
-    "geri-yukle": "tsx scripts/yedekten-geri-yukle.ts"
+    "geri-yukle": "tsx scripts/yedekten-geri-yukle.ts",
+    "tc-ozetle": "tsx scripts/tc-ozetle.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

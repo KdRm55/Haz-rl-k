@@ -1,5 +1,5 @@
 import './ogrenci.css';
-import { OgrenciEkrani, OgrenciGiris, OgrenciSifre } from '@/components/ogrenci/SorgulamaEkrani';
+import { OgrenciEkrani, OgrenciGiris, OgrenciKvkk, OgrenciSifre } from '@/components/ogrenci/SorgulamaEkrani';
 import { genelDuyurular, ogrenciAra } from '@/lib/ogrenci';
 import { oturum } from '@/lib/oturum';
 import type { Duyuru, SorguSonucu } from '@/lib/tipler';
@@ -12,6 +12,8 @@ export default async function OgrenciSayfasi() {
   try { duyurular = await genelDuyurular(); } catch (e) { console.error(e); }
   const o = await oturum().catch(() => null);
   if (!o || o.tur !== 'ogrenci') return <OgrenciGiris duyurular={duyurular} />;
+  // KVKK metni onaylanmadan öğrenci hiçbir bilgisini göremez (sunucu işlemleri de oturumGerekli'de engellenir)
+  if (!o.kvkkOnayli) return <OgrenciKvkk />;
   if (o.sifreDegistirmeli) return <OgrenciSifre duyurular={duyurular} />;
   let sonuc: SorguSonucu;
   try {

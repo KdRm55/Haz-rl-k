@@ -9,6 +9,7 @@ import {
 } from './aktarim-kurallari';
 import { KullaniciHatasi } from './hata';
 import { islemKaydet, yetkiGerekli } from './oturum';
+import { tcOzeti } from './tc-ozeti';
 
 type Vt = ReturnType<typeof vt>;
 type Islem = Parameters<Parameters<Vt['transaction']>[0]>[0];
@@ -65,6 +66,8 @@ async function hazirla(db: Vt | Islem, veri: AktarimVerisi) {
   const genislik = satirlar.reduce((m, r) => Math.max(m, r.length), 0);
   const esl = eslesmeDogrula(veri.eslesme, genislik);
   const dosya = dosyaKayitlari(satirlar, bas, esl);
+  // TC son 6 hane veritabanındaki gibi özetlenir: karşılaştırma ve yazma özet üzerinden yapılır
+  for (const d of Object.values(dosya.kayit)) d.tc6 = tcOzeti(d.tc6);
   if (!Object.keys(dosya.kayit).length) throw new KullaniciHatasi('Dosyada geçerli öğrenci kaydı bulunamadı. Sütun eşleştirmesini kontrol edin.');
   const m = await mevcutDurum(db);
   const alanlar = eslenenAlanlar(esl);

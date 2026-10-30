@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { adSoyadNorm, epostaNorm, geciciSifre, sifreDenetle, tc6Eslesir, tcSon6 } from '@/lib/hesap-kurallari';
+import { adSoyadNorm, epostaNorm, geciciSifre, sifreDenetle, tc6Eslesir, tcKayitlaUyumlu, tcSon6 } from '@/lib/hesap-kurallari';
+import { tcOzetHesapla } from '@/lib/tc-ozeti';
 import { kodDogru, kodOzeti } from '@/lib/kod';
 
 describe('hesap kuralları', () => {
@@ -18,9 +19,20 @@ describe('hesap kuralları', () => {
   it('TC: yalnızca son 6 hane alınır ve eşleştirilir', () => {
     expect(tcSon6('123 456 78901')).toBe('678901');
     expect(tcSon6('12345')).toBe('');
-    expect(tc6Eslesir('678901', '678 901')).toBe(true);
-    expect(tc6Eslesir('678901', '78901')).toBe(false);
-    expect(tc6Eslesir('', '')).toBe(false);
+    const ozetle = (s: string) => tcOzetHesapla(s, 'x'.repeat(32));
+    expect(tc6Eslesir('678901', '678 901', ozetle)).toBe(true);   // eski, açık yazılmış kayıt
+    expect(tc6Eslesir('678901', '78901', ozetle)).toBe(false);
+    expect(tc6Eslesir('', '', ozetle)).toBe(false);
+    const ozet = ozetle('678901');
+    expect(ozet).toMatch(/^h1:/);
+    expect(ozet).not.toContain('678901');
+    expect(tc6Eslesir(ozet, '678901', ozetle)).toBe(true);
+    expect(tc6Eslesir(ozet, '678902', ozetle)).toBe(false);
+    // farklı anahtarla alınan özet tutmaz
+    expect(tc6Eslesir(tcOzetHesapla('678901', 'y'.repeat(32)), '678901', ozetle)).toBe(false);
+    expect(tcKayitlaUyumlu({ tc6: ozet, tc4: '8901' }, '678901', ozetle)).toBe(true);
+    expect(tcKayitlaUyumlu({ tc6: '', tc4: '8901' }, '558901', ozetle)).toBe(true);
+    expect(tcKayitlaUyumlu({ tc6: '', tc4: '8901' }, '558902', ozetle)).toBe(false);
   });
   it('geçici şifre: 10 karakter, harf ve rakam içerir, karışan karakter yok', () => {
     let i = 0;

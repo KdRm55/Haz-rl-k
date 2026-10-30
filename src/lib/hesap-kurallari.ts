@@ -3,6 +3,8 @@ import { KullaniciHatasi } from './hata';
 
 export const SIFRE_EN_AZ = 8;
 export const TC_HANE = 6;
+/** Veritabanındaki son 6 hane özetinin öneki (tc-ozeti.ts); öneksiz değer eski, açık yazılmış kayıttır. */
+export const TC_OZET_ONEK = 'h1:';
 export type HesapTuru = 'admin' | 'hoca' | 'ogrenci';
 export type HesapDurumu = 'bekliyor' | 'aktif' | 'pasif';
 export const TUR_ETIKET: Record<HesapTuru, string> = { admin: 'Yönetici', hoca: 'Öğretim elemanı', ogrenci: 'Öğrenci' };
@@ -35,17 +37,24 @@ export function tcSon6(v: unknown): string {
   return t.length >= TC_HANE ? t.slice(-TC_HANE) : '';
 }
 
-/** Öğrencinin yazdığı son 6 hane kayıttakiyle eşleşiyor mu (kayıt boşsa eşleşmez). */
-export const tc6Eslesir = (kayit: string, girilen: unknown) => !!kayit && kayit.length === TC_HANE && String(girilen ?? '').replace(/\D/g, '') === kayit;
+/**
+ * Öğrencinin yazdığı son 6 hane kayıttakiyle eşleşiyor mu (kayıt boşsa eşleşmez).
+ * Kayıt özetliyse yazılan da aynı anahtarla özetlenip karşılaştırılır (ozetle: tcOzeti).
+ */
+export function tc6Eslesir(kayit: string, girilen: unknown, ozetle: (son6: string) => string): boolean {
+  const g = String(girilen ?? '').replace(/\D/g, '');
+  if (!kayit || g.length !== TC_HANE) return false;
+  return kayit.startsWith(TC_OZET_ONEK) ? ozetle(g) === kayit : g === kayit;
+}
 
 /**
  * Hesap açarken yazılan son 6 hane öğrenci kaydıyla çelişiyor mu?
  * Kayıtta son 6 varsa tam eşleşmeli; yalnızca son 4 varsa yazılanın son 4 hanesi tutmalı; hiçbiri yoksa kabul edilir.
  */
-export function tcKayitlaUyumlu(kayit: { tc6: string; tc4: string }, girilen: unknown): boolean {
+export function tcKayitlaUyumlu(kayit: { tc6: string; tc4: string }, girilen: unknown, ozetle: (son6: string) => string): boolean {
   const g = String(girilen ?? '').replace(/\D/g, '');
   if (g.length !== TC_HANE) return false;
-  if (kayit.tc6) return tc6Eslesir(kayit.tc6, g);
+  if (kayit.tc6) return tc6Eslesir(kayit.tc6, g, ozetle);
   if (kayit.tc4) return g.endsWith(kayit.tc4);
   return true;
 }

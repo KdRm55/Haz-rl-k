@@ -7,6 +7,7 @@ import { KullaniciHatasi } from './hata';
 import { adSoyadNorm, epostaNorm, geciciSifre, type HesapDurumu } from './hesap-kurallari';
 import { benzersiz } from './sirku-kurallari';
 import { kodOzeti } from './kod';
+import { KVKK_SURUM } from './kvkk';
 import { islemKaydet, kimAdi, oturumGerekli, type Oturum } from './oturum';
 
 const k = schema.kullanicilar;
@@ -44,7 +45,8 @@ export async function hesapListesi() {
     ogrenci: { aktif: ogr[0].n, tcVar: ogr[0].tc },
     hesaplar: hesaplar.map(u => ({
       id: u.id, tur: u.tur, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, durum: u.durum as HesapDurumu,
-      sifreDegistirmeli: u.sifreDegistirmeli, olusturma: tarihSaat(u.olusturma), sonGiris: tarihSaat(u.sonGiris)
+      sifreDegistirmeli: u.sifreDegistirmeli, olusturma: tarihSaat(u.olusturma), sonGiris: tarihSaat(u.sonGiris),
+      kvkk: u.tur !== 'ogrenci' ? null : u.kvkkSurum === KVKK_SURUM ? tarihSaat(u.kvkkOnay) : ''   // '' = güncel onay yok
     }))
   };
 }

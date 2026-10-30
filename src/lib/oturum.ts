@@ -12,7 +12,9 @@ import { vt, schema } from '@/db';
 import { KullaniciHatasi, YetkiHatasi } from './hata';
 import { adSoyadNorm, epostaNorm, sifreDenetle, TC_HANE, type HesapTuru } from './hesap-kurallari';
 import { kodDogru, kodOzeti } from './kod';
+import { KVKK_SURUM } from './kvkk';
 import { basNorm } from './metin';
+import { tcOzeti } from './tc-ozeti';
 
 export type Rol = HesapTuru;
 export type Sayfa = 'hoca' | 'yonetim' | 'ogrenci';
@@ -28,6 +30,7 @@ const SAYFA_ADI: Record<Sayfa, string> = { yonetim: 'Yönetim paneli', hoca: 'Ho
 
 export type Oturum = {
   id: number; tur: Rol; adSoyad: string; eposta: string; ogrenciNo: string; hocaAdi: string; sifreDegistirmeli: boolean;
+  kvkkOnayli: boolean;   // öğrenci güncel KVKK metnini onayladı mı (diğer hesaplar için her zaman true)
 };
 
 function anahtar() {
@@ -51,22 +54,23 @@ export const oturum = cache(async (): Promise<Oturum | null> => {
     if (!Number.isInteger(id)) return null;
     const [u] = await vt().select().from(schema.kullanicilar).where(eq(schema.kullanicilar.id, id));
     if (!u || u.durum !== 'aktif' || u.oturumSurumu !== surum) return null;
-    return { id: u.id, tur: u.tur as Rol, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, sifreDegistirmeli: u.sifreDegistirmeli };
+    return { id: u.id, tur: u.tur as Rol, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, sifreDegistirmeli: u.sifreDegistirmeli,
+      kvkkOnayli: u.tur !== 'ogrenci' || u.kvkkSurum === KVKK_SURUM };
   } catch {
     return null;
   }
 });
 
-/** Giriş yapılmış ve şifresi geçerli (geçici değil) hesabın türü. */
+/** Giriş yapılmış, şifresi geçerli (geçici değil) ve KVKK onayı tamam olan hesabın türü. */
 export async function oturumRolu(): Promise<Rol | null> {
   const o = await oturum();
-  return o && !o.sifreDegistirmeli ? o.tur : null;
+  return o && !o.sifreDegistirmeli && o.kvkkOnayli ? o.tur : null;
 }
 
-/** Sunucu işlemlerinin başında çağrılır; yetki yoksa hata fırlatır. */
+/** Sunucu işlemlerinin başında çağrılır; yetki yoksa hata fırlatır. KVKK onayı vermemiş öğrenci hiçbir işlem yapamaz. */
 export async function oturumGerekli(roller: Rol[]): Promise<Oturum> {
   const o = await oturum();
-  if (!o || o.sifreDegistirmeli || !roller.includes(o.tur)) throw new YetkiHatasi();
+  if (!o || o.sifreDegistirmeli || !o.kvkkOnayli || !roller.includes(o.tur)) throw new YetkiHatasi();
   return o;
 }
 export async function yetkiGerekli(roller: Rol[]): Promise<Rol> {
@@ -146,14 +150,15 @@ export async function girisYap(sayfa: Sayfa, kimlikHam: string, sifre: string): 
 /**
  * Öğrenci: numarası, TC kimlik numarasının son 6 hanesi ve kendi şifresiyle hesap açar.
  * Öğrenci numarası sistemde kayıtlı olan her öğrenci hesap oluşturabilir.
- * Yazılan TC son 6 hanesi öğrencinin kaydına işlenir.
+ * Yazılan TC son 6 hanesi öğrencinin kaydına işlenir. KVKK aydınlatma metni onaylanmadan hesap açılmaz.
  */
-export async function ogrenciKayit(noHam: string, tcHam: string, sifre: string, tekrar: string): Promise<GirisSonucu> {
+export async function ogrenciKayit(noHam: string, tcHam: string, sifre: string, tekrar: string, kvkk: boolean): Promise<GirisSonucu> {
   const no = String(noHam ?? '').replace(/\s+/g, '').slice(0, 20);
   const tc = String(tcHam ?? '').replace(/\D/g, '');
   if (!no) return { ok: false, mesaj: 'Öğrenci numaranı yaz.' };
   if (tc.length !== TC_HANE) return { ok: false, mesaj: `TC kimlik numaranın son ${TC_HANE} hanesini yaz.` };
   try { sifreDenetle(sifre, tekrar); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
+  if (!kvkk) return { ok: false, mesaj: 'Hesabını oluşturmak için kişisel verilerin hakkındaki metni okuyup onay kutusunu işaretlemelisin.' };
   let sinir;
   try { sinir = await denemeSiniri('kayit:' + no); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
   const db = vt();
@@ -165,16 +170,19 @@ export async function ogrenciKayit(noHam: string, tcHam: string, sifre: string, 
   await sinir.temizle();
   const [var_] = await db.select({ id: schema.kullanicilar.id }).from(schema.kullanicilar).where(eq(schema.kullanicilar.ogrenciNo, no));
   if (var_) return { ok: false, mesaj: 'Bu numarayla zaten bir hesap açılmış. Şifreni unuttuysan idareye başvur.' };
+  let tcOz: string;
+  try { tcOz = tcOzeti(tc); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
   const u = await db.transaction(async tx => {
     const [yeni] = await tx.insert(schema.kullanicilar).values({
-      tur: 'ogrenci', ogrenciNo: no, adSoyad: (o.adi + ' ' + o.soyadi).trim(), sifreOzeti: kodOzeti(sifre), durum: 'aktif', sonGiris: new Date()
+      tur: 'ogrenci', ogrenciNo: no, adSoyad: (o.adi + ' ' + o.soyadi).trim(), sifreOzeti: kodOzeti(sifre), durum: 'aktif', sonGiris: new Date(),
+      kvkkOnay: new Date(), kvkkSurum: KVKK_SURUM
     }).returning();
-    // Öğrencinin yazdığı TC son 6 hanesi kaydına kaydedilir
-    await tx.update(schema.ogrenciler).set({ tc6: tc, tc4: tc.slice(-4), guncellendi: new Date() }).where(eq(schema.ogrenciler.no, no));
+    // Öğrencinin yazdığı TC son 6 hanesi kaydına özet olarak işlenir
+    await tx.update(schema.ogrenciler).set({ tc6: tcOz, tc4: tc.slice(-4), guncellendi: new Date() }).where(eq(schema.ogrenciler.no, no));
     return yeni;
   });
   await cerezYaz(u.id, u.oturumSurumu);
-  await islemKaydet('Hesap oluşturma', 'Öğrenci ' + no, u.adSoyad);
+  await islemKaydet('Hesap oluşturma', `Öğrenci ${no} (KVKK onayı ${KVKK_SURUM})`, u.adSoyad);
   return { ok: true, rol: 'ogrenci' };
 }
 
@@ -194,6 +202,17 @@ export async function hocaKayit(v: { adSoyad: string; eposta: string; hocaAdi: s
     if (e instanceof KullaniciHatasi) return { ok: false, mesaj: e.message };
     throw e;
   }
+}
+
+/** Öğrencinin KVKK aydınlatma metnini onaylaması (hesap açılırken onay vermemiş ya da metin güncellenmişse). */
+export async function kvkkOnayla(onay: boolean): Promise<{ ok: boolean; mesaj: string }> {
+  const o = await oturum();
+  if (!o) throw new YetkiHatasi();
+  if (o.kvkkOnayli) return { ok: true, mesaj: '' };
+  if (!onay) return { ok: false, mesaj: 'Devam etmek için metni okuyup onay kutusunu işaretlemelisin.' };
+  await vt().update(schema.kullanicilar).set({ kvkkOnay: new Date(), kvkkSurum: KVKK_SURUM }).where(eq(schema.kullanicilar.id, o.id));
+  await islemKaydet('KVKK onayı', 'Sürüm ' + KVKK_SURUM, kimAdi(o));
+  return { ok: true, mesaj: 'Teşekkürler, onayın kaydedildi.' };
 }
 
 /** Kendi şifresini değiştirme (geçici şifreyle girenler için zorunlu). Diğer cihazlardaki oturumlar kapanır. */

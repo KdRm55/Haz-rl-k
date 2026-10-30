@@ -13,6 +13,7 @@ import { basNorm, cinsiyetKod, hazirlikMi, sinifAnahtari, sinifTuru, TR_GUN_SIRA
 import { ayarlarOku, ogrenciAra } from './ogrenci';
 import { duyuruGecerli, gorunum, HEDEF } from './ogrenci-kurallari';
 import { tcSon6 } from './hesap-kurallari';
+import { tcOzeti } from './tc-ozeti';
 import { islemKaydet, yetkiGerekli } from './oturum';
 import { taslaktaSabitle } from './siniflandirma';
 
@@ -233,7 +234,7 @@ export async function ogrenciEkle(v: OgrenciEklemeGirdisi) {
       sinifSira = n + 1;   // sınıf listesinin sonuna eklenir
     }
     await tx.insert(schema.ogrenciler).values({
-      no, adi, soyadi, cinsiyet, tc6, tc4: tc6.slice(-4), bolum: String(v?.bolum ?? '').trim().slice(0, 150), not: String(v?.not ?? '').trim().slice(0, 500),
+      no, adi, soyadi, cinsiyet, tc6: tcOzeti(tc6), tc4: tc6.slice(-4), bolum: String(v?.bolum ?? '').trim().slice(0, 150), not: String(v?.not ?? '').trim().slice(0, 500),
       durum: 'aktif', kayitli: true, sinifId: sinif?.id ?? null, sinifSira, ilkGorulme: simdi, guncellendi: simdi
     });
     // Sınıfı elle verilen öğrenci taslakta da sabitlenir; sonraki "Yeniden dağıt" yerini bozmaz

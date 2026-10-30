@@ -136,7 +136,9 @@ function Satir({ h, benId, adlar, degisti, mesaj, sifreGoster }: {
   };
   return (
     <tr>
-      <td>{h.adSoyad || '—'}{ben && <span className="rozet-durum" style={{ marginLeft: 6 }}>siz</span>}{h.sifreDegistirmeli && <span className="rozet-durum listede-yok" style={{ marginLeft: 6 }}>geçici şifre</span>}</td>
+      <td>{h.adSoyad || '—'}{ben && <span className="rozet-durum" style={{ marginLeft: 6 }}>siz</span>}{h.sifreDegistirmeli && <span className="rozet-durum listede-yok" style={{ marginLeft: 6 }}>geçici şifre</span>}
+        {h.kvkk === '' && <span className="rozet-durum listede-yok" style={{ marginLeft: 6 }} title="Öğrenci güncel KVKK metnini henüz onaylamadı; ilk girişinde onay ekranı açılır">KVKK onayı yok</span>}
+        {h.kvkk && <span className="rozet-durum" style={{ marginLeft: 6 }} title={'KVKK onayı: ' + h.kvkk}>KVKK ✓</span>}</td>
       <td className="no">{h.tur === 'ogrenci' ? h.ogrenciNo : h.eposta}</td>
       {h.tur === 'hoca' && <td><HocaAdiSec deger={h.hocaAdi} adlar={adlar} degisti={v => sonuc(cagir(hesapGuncelleIslemi(h.id, { hocaAdi: v })), `${kim}: ders programı adı "${v}" olarak kaydedildi.`)} /></td>}
       <td><span className={'rozet-durum' + (h.durum === 'pasif' ? ' silindi' : h.durum === 'bekliyor' ? ' listede-yok' : '')}>{DURUM_ETIKET[h.durum]}</span></td>
