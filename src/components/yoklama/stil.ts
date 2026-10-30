@@ -103,6 +103,8 @@ export const YOKLAMA_HOCA_CSS = `
 .yk-ed-durum label{display:inline-flex; gap:6px; align-items:center; cursor:pointer;}
 .yk-ed-durum input{accent-color:var(--navy); width:16px; height:16px; margin:0;}
 .yk-ed-durum .btn{width:auto; padding:7px 14px; font-size:13px;}
+.yk-ed-durum .yk-sirala{margin-left:auto; font-size:13px; color:var(--muted, #5F6283);}
+.yk-sirala select{width:auto; padding:6px 10px; border:1px solid #cfd3e6; border-radius:8px; font-size:13px; font-family:inherit; background:#fff; color:inherit; cursor:pointer;}
 .yk-tablo-kap{overflow-x:auto; border-top:1px solid var(--line);}
 table.yk-tablo{width:100%; border-collapse:collapse; font-size:14px;}
 .yk-tablo th{position:sticky; top:0; background:var(--navy-tint); font-size:12.5px; font-weight:600; text-align:left; padding:8px 10px; border-bottom:1px solid var(--line-strong); z-index:1;}

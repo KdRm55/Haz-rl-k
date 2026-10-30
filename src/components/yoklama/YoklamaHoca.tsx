@@ -10,6 +10,11 @@ import { YOKLAMA_HOCA_CSS } from './stil';
 import { Tarama } from './Tarama';
 
 const HOCA_ANAHTAR = 'hz_yok_hoca_v1';
+const SIRA_ANAHTAR = 'hz_yok_sira_v1';
+
+/** Yoklama tablosunun görünüm sırası; kaydedilen liste her zaman sınıf listesi sırasındadır. */
+type Siralama = 'liste' | 'ad' | 'soyad' | 'no';
+const SIRALAMALAR: [Siralama, string][] = [['liste', 'Sınıf listesi sırası'], ['ad', 'Ada göre (A–Z)'], ['soyad', 'Soyada göre (A–Z)'], ['no', 'Öğrenci numarasına göre']];
 
 function pazartesiISO() {
   const d = new Date();
@@ -40,6 +45,19 @@ function Editor({ d, admin, hoca, kapat, kaydedildi, kirli, setKirli }: {
   const [bekliyor, setBekliyor] = useState(false);
   const o = d.oturum, yapilmadi = durum === 'Yapılmadı';
   const isim = useMemo(() => new Map(d.ogrenciler.map(s => [s.no, s])), [d]);
+  const [sira, setSira] = useState<Siralama>('liste');
+  useEffect(() => { try { const v = localStorage.getItem(SIRA_ANAHTAR); if (SIRALAMALAR.some(([k]) => k === v)) setSira(v as Siralama); } catch { /* yok say */ } }, []);
+  const siraSec = (v: Siralama) => { setSira(v); try { localStorage.setItem(SIRA_ANAHTAR, v); } catch { /* yok say */ } };
+  const gorunen = useMemo(() => {
+    if (sira === 'liste') return satirlar;
+    const tr = (a: string, b: string) => a.localeCompare(b, 'tr', { sensitivity: 'base', numeric: true });
+    const anahtar = (no: string) => { const b = isim.get(no); return sira === 'ad' ? [b?.adi ?? '', b?.soyadi ?? ''] : [b?.soyadi ?? '', b?.adi ?? '']; };
+    return [...satirlar].sort((x, y) => {
+      if (sira === 'no') return tr(x.no, y.no);
+      const [a1, a2] = anahtar(x.no), [b1, b2] = anahtar(y.no);
+      return tr(a1, b1) || tr(a2, b2) || tr(x.no, y.no);
+    });
+  }, [satirlar, sira, isim]);
   const degis = (no: string, f: 'y1' | 'y2' | 'iz', v: boolean) => { setSatirlar(l => l.map(s => (s.no === no ? { ...s, [f]: v } : s))); setKirli(true); };
 
   const sayac = (() => {
@@ -82,12 +100,16 @@ function Editor({ d, admin, hoca, kapat, kaydedildi, kirli, setKirli }: {
         <label><input type="radio" name="ykDurum" checked={!yapilmadi} onChange={() => { setDurum('Yapıldı'); setKirli(true); }} /> Ders yapıldı</label>
         <label><input type="radio" name="ykDurum" checked={yapilmadi} onChange={() => { setDurum('Yapılmadı'); setKirli(true); }} /> Ders yapılmadı (tatil, iptal)</label>
         <button type="button" className="btn btn-secondary" disabled={yapilmadi} onClick={() => { setSatirlar(l => l.map(s => ({ ...s, y1: false, y2: false }))); setKirli(true); }}>Herkes geldi</button>
+        <label className="yk-sirala">Sırala
+          <select value={sira} onChange={e => siraSec(e.target.value as Siralama)} aria-label="Öğrenci sıralaması">
+            {SIRALAMALAR.map(([k, et]) => <option key={k} value={k}>{et}</option>)}
+          </select></label>
       </div>
       {d.gelecek && <div className="yk-mesaj"><div className="hata">Bu ders henüz yapılmadı; ileri tarihli yoklama kaydedilemez.</div></div>}
       <div className="yk-tablo-kap" style={{ opacity: yapilmadi ? 0.5 : undefined }}>
         <table className="yk-tablo">
           <thead><tr><th>#</th><th>No</th><th>Adı Soyadı</th><th className="c">1. ders</th><th className="c">2. ders</th>{admin && <th className="c">İzinli</th>}</tr></thead>
-          <tbody>{satirlar.map((s, i) => {
+          <tbody>{gorunen.map((s, i) => {
             const b = isim.get(s.no)!, adi = (b.adi + ' ' + b.soyadi).trim() || '(adı bulunamadı)';
             const izinli = admin && s.iz, eksik = s.y1 || s.y2;
             return (
