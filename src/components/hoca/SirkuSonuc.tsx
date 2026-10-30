@@ -28,8 +28,10 @@ function kayitliDuzen(): SirkuDuzen {
     if (d?.mod === 'n' && gecerli(d.n)) return { mod: 'n', n: Math.round(d.n) };
     if (d?.mod === 'oto') return { mod: 'oto', n: gecerli(d.n) ? Math.round(d.n) : 30 };
   } catch { /* yok say */ }
-  return { mod: 'oto', n: 30 };
+  return VARSAYILAN_DUZEN;
 }
+// Seçim yapılmamış tarayıcıda sayfa başına 30 öğrenci (otomatikte 45'e kadar tek sayfaya sıkışıyordu)
+const VARSAYILAN_DUZEN: SirkuDuzen = { mod: 'n', n: 30 };
 
 function DuzenSecici({ duzen, degisti }: { duzen: SirkuDuzen; degisti: (d: SirkuDuzen) => void }) {
   const [metin, setMetin] = useState(String(duzen.n));
@@ -51,6 +53,9 @@ function DuzenSecici({ duzen, degisti }: { duzen: SirkuDuzen; degisti: (d: Sirku
       <label><input type="radio" name="sirkuDuzen" checked={duzen.mod === 'oto'} onChange={() => { setHata(''); degisti({ mod: 'oto', n: duzen.n }); }} /> Otomatik <span className="muted-note">(45 öğrenciye kadar tek sayfa)</span></label>
       <label><input type="radio" name="sirkuDuzen" checked={duzen.mod === 'n'} onChange={() => sayiUygula(metin)} /> Sayfa başına en çok{' '}
         <input type="number" min={SIRKU_N_EN_AZ} max={SIRKU_SAYFA_BASI} step={1} inputMode="numeric" value={metin} aria-label="Sayfa başına en çok öğrenci sayısı"
+          className={duzen.mod === 'oto' ? 'pasif' : undefined}
+          // Kutuya tıklamak bu seçeneği seçer: kutuda zaten 30 yazarken "Otomatik" seçili kalıyordu
+          onFocus={() => { if (duzen.mod !== 'n') sayiUygula(metin); }}
           onChange={e => { const v = e.target.value; setMetin(v); clearTimeout(zaman.current); zaman.current = setTimeout(() => sayiUygula(v), 700); }}
           onBlur={e => sayiUygula(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sayiUygula(metin); } }} /> öğrenci</label>
       {hata && <div className="sd-hata" role="alert">{hata}</div>}
@@ -98,7 +103,7 @@ function EvrakKartiGorunumu({ k, eksik, yazdirTek }: { k: EvrakKarti; eksik: num
 }
 
 export function SirkuSonuc({ s, rol }: { s: SirkuVerisi; rol?: Rol }) {
-  const [duzen, setDuzen] = useState<SirkuDuzen>({ mod: 'oto', n: 30 });
+  const [duzen, setDuzen] = useState<SirkuDuzen>(VARSAYILAN_DUZEN);
   const [logo, setLogo] = useState('');
   const [eksikler, setEksikler] = useState<Record<string, number>>({});
   const [durum, setDurum] = useState('');
