@@ -155,7 +155,7 @@ export async function disaAktarimListesi() {
 }
 
 /** Panelden tek öğrencinin sınıfı, durumu, cinsiyeti ya da notu değiştirilir; her değişiklik iz bırakır. */
-export async function ogrenciGuncelle(no: string, v: { sinifId?: number | null; durum?: string; cinsiyet?: string; not?: string }) {
+export async function ogrenciGuncelle(no: string, v: { adi?: string; soyadi?: string; sinifId?: number | null; durum?: string; cinsiyet?: string; not?: string }) {
   await yonetici();
   const db = vt();
   const [o] = await db.select().from(schema.ogrenciler).where(eq(schema.ogrenciler.no, String(no)));
@@ -164,6 +164,13 @@ export async function ogrenciGuncelle(no: string, v: { sinifId?: number | null; 
   const adi = (id: number | null) => (id ? siniflar.find(s => s.id === id)?.ad ?? '' : '');
   const set: Partial<typeof schema.ogrenciler.$inferInsert> = {};
   const log: [string, string, string][] = [];
+  const isim = (x: unknown, et: string) => {
+    const t = String(x ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    if (!t) throw new KullaniciHatasi(et + ' boş bırakılamaz.');
+    return t;
+  };
+  if (v.adi !== undefined && isim(v.adi, 'Adı') !== o.adi) { set.adi = isim(v.adi, 'Adı'); log.push(['Adı', o.adi, set.adi]); }
+  if (v.soyadi !== undefined && isim(v.soyadi, 'Soyadı') !== o.soyadi) { set.soyadi = isim(v.soyadi, 'Soyadı'); log.push(['Soyadı', o.soyadi, set.soyadi]); }
   if (v.sinifId !== undefined && (v.sinifId ?? null) !== o.sinifId) {
     const yeni = v.sinifId == null ? null : siniflar.find(s => s.id === Number(v.sinifId));
     if (v.sinifId != null && !yeni) throw new KullaniciHatasi('Sınıf bulunamadı.');
@@ -193,6 +200,10 @@ export async function ogrenciGuncelle(no: string, v: { sinifId?: number | null; 
     await tx.update(schema.ogrenciler).set({ ...set, guncellendi: new Date() }).where(eq(schema.ogrenciler.no, o.no));
     // Sınıfı elle değişen öğrenci taslakta da sabitlenir; sonraki "Yeniden dağıt" yerini bozmaz
     if (set.sinifId !== undefined) await taslaktaSabitle(tx, o.no, siniflar.find(s => s.id === set.sinifId)?.ad ?? '');
+    // Öğrencinin hesabı varsa hesaptaki ad da güncellenir (Kullanıcılar sekmesi, işlem kaydı)
+    if (set.adi !== undefined || set.soyadi !== undefined) {
+      await tx.update(schema.kullanicilar).set({ adSoyad: ((set.adi ?? o.adi) + ' ' + (set.soyadi ?? o.soyadi)).trim() }).where(eq(schema.kullanicilar.ogrenciNo, o.no));
+    }
     await tx.insert(schema.ogrenciDegisiklikleri).values(log.map(([alan, eski, yeni]) => ({ kaynak: 'Elle', ogrenciNo: o.no, adSoyad: ad, alan, eski, yeni })));
   });
   await islemKaydet('Öğrenci düzenleme', `${o.no} ${ad}: ${log.map(l => l[0]).join(', ')}`);

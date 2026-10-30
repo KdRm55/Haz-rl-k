@@ -8,7 +8,7 @@ import type { OgrenciListesi } from '@/lib/yonetim';
 import { Mesaj, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
 
 type Ogrenci = OgrenciListesi['ogrenciler'][number];
-type Duzenleme = { sinifId: number | null; durum: string; cinsiyet: string; not: string };
+type Duzenleme = { adi: string; soyadi: string; sinifId: number | null; durum: string; cinsiyet: string; not: string };
 const GOSTERIM_SINIRI = 300;
 const DISA_BASLIK = ['OGR_NO', 'ADI_SOYADI', 'CINSIYET', 'SUBE', 'SINIF'];
 
@@ -94,9 +94,9 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
       (!q || o.no.includes(q.replace(/\s/g, '')) || basNorm(o.adi + ' ' + o.soyadi).includes(q)));
   }, [veri, ara, sinifF, durumF]);
 
-  const deger = (o: Ogrenci): Duzenleme => duzen[o.no] ?? { sinifId: o.sinifId, durum: o.durum, cinsiyet: o.cinsiyet, not: o.not };
+  const deger = (o: Ogrenci): Duzenleme => duzen[o.no] ?? { adi: o.adi, soyadi: o.soyadi, sinifId: o.sinifId, durum: o.durum, cinsiyet: o.cinsiyet, not: o.not };
   const yaz = (o: Ogrenci, d: Partial<Duzenleme>) => setDuzen(x => ({ ...x, [o.no]: { ...deger(o), ...d } }));
-  const farkli = (o: Ogrenci) => { const d = duzen[o.no]; return !!d && (d.sinifId !== o.sinifId || d.durum !== o.durum || d.cinsiyet !== o.cinsiyet || d.not !== o.not); };
+  const farkli = (o: Ogrenci) => { const d = duzen[o.no]; return !!d && (d.adi !== o.adi || d.soyadi !== o.soyadi || d.sinifId !== o.sinifId || d.durum !== o.durum || d.cinsiyet !== o.cinsiyet || d.not !== o.not); };
 
   async function kaydet(o: Ogrenci) {
     setKaydediliyor(o.no); setMesaj(null);
@@ -104,7 +104,8 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
     setKaydediliyor('');
     if (!r.ok) { setMesaj({ metin: r.hata, hata: true }); return; }
     setDuzen(x => { const y = { ...x }; delete y[o.no]; return y; });
-    setMesaj({ metin: `${o.no} ${o.adi} ${o.soyadi} kaydedildi.` });
+    const d = deger(o);
+    setMesaj({ metin: `${o.no} ${d.adi.trim()} ${d.soyadi.trim()} kaydedildi.` });
     await yenile(); degisti();
   }
 
@@ -129,7 +130,7 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
         <button className="btn btn-secondary" type="button" onClick={() => disaAktar('csv')}>⬇️ CSV indir</button>
         <button className="btn btn-secondary" type="button" onClick={() => { setDuzen({}); yenile(); }}>🔄 Yenile</button>
       </div>
-      <p className="aciklama">Kopyalama ve CSV, aktif sınıflardaki öğrencileri eski biçimle verir (OGR_NO, ADI_SOYADI, CINSIYET, SUBE, SINIF). Aşağıdaki tabloda bir öğrencinin sınıfını, kayıt durumunu, cinsiyetini ya da notunu değiştirip &quot;Kaydet&quot;e basın; her değişiklik geçmişe yazılır.</p>
+      <p className="aciklama">Kopyalama ve CSV, aktif sınıflardaki öğrencileri eski biçimle verir (OGR_NO, ADI_SOYADI, CINSIYET, SUBE, SINIF). Aşağıdaki tabloda bir öğrencinin adını, soyadını, sınıfını, kayıt durumunu, cinsiyetini ya da notunu değiştirip &quot;Kaydet&quot;e basın; her değişiklik geçmişe yazılır.</p>
       <OgrenciEkle siniflar={veri.siniflar} eklendi={async (no, m) => { setMesaj({ metin: m }); setAra(no); setDurumF('aktif'); setSinifF('tum'); await yenile(); degisti(); }} />
       <Mesaj m={mesaj} />
       <div className="filtre">
@@ -145,14 +146,16 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
       </div>
       <div className="table-card"><div className="scroller">
         <table className="duzen-tablo">
-          <thead><tr><th>No</th><th>Adı Soyadı</th><th>Cinsiyet</th><th>Sınıf</th><th>Durum</th><th>Not</th><th></th></tr></thead>
+          <thead><tr><th>No</th><th>Adı</th><th>Soyadı</th><th>Cinsiyet</th><th>Sınıf</th><th>Durum</th><th>Not</th><th></th></tr></thead>
           <tbody>
             {liste.slice(0, GOSTERIM_SINIRI).map(o => {
               const d = deger(o);
               return (
                 <tr key={o.no} className={farkli(o) ? 'degisti' : undefined}>
                   <td className="no">{o.no}</td>
-                  <td>{o.adi} {o.soyadi}{!o.kayitli && <> <span className="rozet-durum listede-yok" title="Yüklenen öğrenci listesinde yok">listede yok</span></>}</td>
+                  <td style={{ minWidth: 130 }}><input type="text" value={d.adi} maxLength={100} onChange={e => yaz(o, { adi: e.target.value })} aria-label={`${o.no} adı`} />
+                    {!o.kayitli && <span className="rozet-durum listede-yok" title="Yüklenen öğrenci listesinde yok">listede yok</span>}</td>
+                  <td style={{ minWidth: 130 }}><input type="text" value={d.soyadi} maxLength={100} onChange={e => yaz(o, { soyadi: e.target.value })} aria-label={`${o.no} soyadı`} /></td>
                   <td style={{ width: 90 }}><select value={d.cinsiyet} onChange={e => yaz(o, { cinsiyet: e.target.value })} aria-label="Cinsiyet">
                     <option value="">—</option><option value="K">K</option><option value="E">E</option></select></td>
                   <td style={{ width: 170 }}><select value={d.sinifId ?? ''} onChange={e => yaz(o, { sinifId: e.target.value ? Number(e.target.value) : null })} aria-label="Sınıf">
@@ -168,7 +171,7 @@ export function OgrencilerSekmesi({ degisti }: { degisti: () => void }) {
                 </tr>
               );
             })}
-            {!liste.length && <tr><td colSpan={7}><div className="durum">Bu filtreyle öğrenci yok.</div></td></tr>}
+            {!liste.length && <tr><td colSpan={8}><div className="durum">Bu filtreyle öğrenci yok.</div></td></tr>}
           </tbody>
         </table>
       </div></div>
