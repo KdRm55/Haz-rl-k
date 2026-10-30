@@ -7,6 +7,7 @@ import type { HocaBaslangic } from '@/lib/hoca';
 import type { Sonuc } from '@/lib/islem-sonucu';
 import type { OturumGirdisi, YoklamaEditoru, YoklamaHaftasi } from '@/lib/yoklama';
 import { YOKLAMA_HOCA_CSS } from './stil';
+import { OgrenciYoklamasi } from './OgrenciYoklamasi';
 import { Tarama } from './Tarama';
 
 const HOCA_ANAHTAR = 'hz_yok_hoca_v1';
@@ -254,6 +255,8 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
         </div>
         <datalist id="ykSaatler">{b.saatler.map(s => <option key={s} value={s} />)}</datalist>
       </details>
+
+      <OgrenciYoklamasi yetkiHatasi={yetkiHatasi} />
 
       <div ref={edRef}>
         {edMesaj && !ed && <div className="yk-mesaj" style={{ padding: 0 }}><div className="ok">{edMesaj}</div></div>}

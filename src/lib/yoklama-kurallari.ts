@@ -208,3 +208,12 @@ export function eksikOturumlar(program: ProgramSatiri[], siniflar: SinifOzet[], 
   }
   return { baslangic: bas, eksik };
 }
+
+/**
+ * Tek öğrencinin bir yoklamadaki 1. ve 2. ders durumunu değiştirir (hoca ekranı → öğrenci arama).
+ * Listede yoksa listeye eklenir; izinli işareti ve diğer öğrenciler olduğu gibi kalır.
+ */
+export function ogrenciYoklamaDegistir(k: Pick<YoklamaKaydi, 'liste' | 'yok1' | 'yok2'>, no: string, yok1: boolean, yok2: boolean) {
+  const ayarla = (l: string[], var_: boolean) => (var_ ? (l.includes(no) ? l : [...l, no]) : l.filter(n => n !== no));
+  return { liste: k.liste.includes(no) ? k.liste : [...k.liste, no], yok1: ayarla(k.yok1, yok1), yok2: ayarla(k.yok2, yok2) };
+}

@@ -95,6 +95,17 @@ export const YOKLAMA_HOCA_CSS = `
 .yk-telafi{margin-top:24px; border:1px dashed var(--line-strong); border-radius:10px; background:#FAFAFD;}
 .yk-telafi summary{cursor:pointer; padding:12px 16px; font-weight:600; color:var(--navy);}
 .yk-telafi .yk-form{padding:4px 16px 16px;}
+.yk-ogrenci > :not(summary):not(.yk-form){margin-left:16px; margin-right:16px;}
+.yk-ogrenci > :last-child{margin-bottom:16px;}
+.yo-bulunan{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+.yo-kisi{display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:8px 12px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; cursor:pointer; font:inherit; font-size:13.5px; text-align:left;}
+.yo-kisi span{font-size:12px; color:var(--muted);}
+.yo-kisi.secili, .yo-kisi:hover{border-color:var(--navy); box-shadow:0 0 0 2px rgba(47,49,141,.12);}
+.yo-alt{font-size:12px; color:var(--muted);}
+.yo-yok{color:#B42318; font-weight:600;}
+.yo-geldi{color:#1F6B43;}
+.yo-hata{font-size:12.5px; color:#B42318; margin-top:4px;}
+.yk-ogrenci .btn-kucuk{width:auto; padding:6px 12px; font-size:13px;}
 .yk-editor{margin-top:26px; border:1px solid var(--line); border-left:4px solid var(--navy); border-radius:12px; background:#fff;}
 .yk-ed-bas{padding:16px 18px 10px; display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline; justify-content:space-between;}
 .yk-ed-bas h3{margin:0; font-family:var(--serif); font-size:19px;}

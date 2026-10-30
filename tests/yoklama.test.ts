@@ -144,3 +144,14 @@ describe('tam yedek', () => {
     expect(() => yedekDogrula({ uygulama: 'baska' })).toThrow('yedeği değil');
   });
 });
+
+describe('öğrenciye göre yoklama düzeltme', () => {
+  it('yalnızca o öğrenciyi değiştirir, listede yoksa ekler', async () => {
+    const { ogrenciYoklamaDegistir } = await import('@/lib/yoklama-kurallari');
+    const k = { liste: ['1', '2'], yok1: ['2'], yok2: ['1', '2'] };
+    expect(ogrenciYoklamaDegistir(k, '1', true, false)).toEqual({ liste: ['1', '2'], yok1: ['2', '1'], yok2: ['2'] });
+    expect(ogrenciYoklamaDegistir(k, '2', false, false)).toEqual({ liste: ['1', '2'], yok1: [], yok2: ['1'] });
+    expect(ogrenciYoklamaDegistir(k, '3', true, true)).toEqual({ liste: ['1', '2', '3'], yok1: ['2', '3'], yok2: ['1', '2', '3'] });
+    expect(ogrenciYoklamaDegistir(k, '2', true, true)).toEqual(k);
+  });
+});

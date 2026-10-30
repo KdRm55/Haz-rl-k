@@ -13,7 +13,7 @@ import { hocaKapsami, islemKaydet, kimAdi, oturumGerekli, yetkiGerekli, type Otu
 import type { SinifOgrencili } from './sirku-kurallari';
 import {
   devamsizlikHesapla, eksikOturumlar, evrakNoUret, gelmeyenSayisi, gunAdi, haftalikDersSaatleri, isoEkle, isoGecerli, isoTr, noListesi,
-  oturumAnahtari, ozet, pazartesi, programdaVar, programOturumlari, sinirHesapla, trIso, yokAyarCoz, yoklamaBirlestir,
+  ogrenciYoklamaDegistir, oturumAnahtari, ozet, pazartesi, programdaVar, programOturumlari, sinirHesapla, trIso, yokAyarCoz, yoklamaBirlestir,
   YOK_DURUM, YOK_TUR, type YokDurum, type YoklamaKaydi, type YokTur
 } from './yoklama-kurallari';
 
@@ -166,6 +166,78 @@ export async function yoklamaSil(anahtar: string) {
   if (!k) throw new KullaniciHatasi('Silinecek yoklama bulunamadı.');
   await islemKaydet('Yoklama', `Silindi: ${k.sinif} · ${k.ders} · ${isoTr(k.tarih)} ${k.saat}`);
   return true;
+}
+
+/* ---------- Öğrenciye göre yoklama (hoca ekranı) ---------- */
+/** Numara ya da ad soyadla öğrenci arama (aktif öğrenciler, en çok 20). */
+export async function yoklamaOgrenciAra(qHam: string) {
+  await oturumGerekli(HOCA_ROLLERI);
+  const q = basNorm(String(qHam ?? '')).trim(), qNo = String(qHam ?? '').replace(/\s+/g, '');
+  if (q.length < 2) throw new KullaniciHatasi('Aramak için en az 2 karakter yazın.');
+  const [ogr, siniflar] = await Promise.all([
+    vt().select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi, sinifId: schema.ogrenciler.sinifId })
+      .from(schema.ogrenciler).where(eq(schema.ogrenciler.durum, 'aktif')),
+    vt().select({ id: schema.siniflar.id, ad: schema.siniflar.ad }).from(schema.siniflar)
+  ]);
+  const sinifAd = new Map(siniflar.map(s => [s.id, s.ad]));
+  return ogr.filter(o => (/^\d+$/.test(qNo) && o.no.includes(qNo)) || basNorm(o.adi + ' ' + o.soyadi).includes(q))
+    .sort((a, b) => (a.adi + ' ' + a.soyadi).localeCompare(b.adi + ' ' + b.soyadi, 'tr') || a.no.localeCompare(b.no))
+    .slice(0, 20)
+    .map(o => ({ no: o.no, ad: (o.adi + ' ' + o.soyadi).trim(), sinif: o.sinifId ? sinifAd.get(o.sinifId) ?? '' : '' }));
+}
+export type YoklamaOgrenciBulunan = Awaited<ReturnType<typeof yoklamaOgrenciAra>>[number];
+
+/**
+ * Öğrencinin sınıfına ait (ya da listesinde bulunduğu) bütün yoklama günleri, yeniden eskiye.
+ * Hoca yalnızca kendi derslerini değiştirebilir; diğerleri bilgi olarak görünür.
+ */
+export async function yoklamaOgrenciKayitlari(noHam: string) {
+  const ot = await oturumGerekli(HOCA_ROLLERI);
+  const no = String(noHam ?? '').trim();
+  const [o] = await vt().select().from(schema.ogrenciler).where(eq(schema.ogrenciler.no, no));
+  if (!o) throw new KullaniciHatasi('Öğrenci bulunamadı.');
+  const sinif = o.sinifId ? (await vt().select({ ad: schema.siniflar.ad }).from(schema.siniflar).where(eq(schema.siniflar.id, o.sinifId)))[0]?.ad ?? '' : '';
+  const y = schema.yoklamalar;
+  const kosul = sql`${y.liste} @> ${JSON.stringify([no])}::jsonb`;
+  const k = await kayitlar(vt(), sinif ? sql`(${y.sinif} = ${sinif} or ${kosul})` : kosul);
+  const hn = basNorm(ot.hocaAdi), bugun = bugunIso();
+  k.sort((a, b) => b.iso.localeCompare(a.iso) || a.saat.localeCompare(b.saat, 'tr') || a.ders.localeCompare(b.ders, 'tr'));
+  return {
+    no, ad: (o.adi + ' ' + o.soyadi).trim(), sinif,
+    gunler: k.map(x => ({
+      anahtar: x.anahtar, iso: x.iso, tarih: isoTr(x.iso), gun: gunAdi(x.iso), saat: x.saat, ders: x.ders, sinif: x.sinif, hoca: x.hoca, tur: x.tur,
+      durum: x.durum, listede: x.liste.includes(no), yok1: x.yok1.includes(no), yok2: x.yok2.includes(no), izinli: x.izinli.includes(no),
+      kaydeden: x.kaydeden, zaman: x.zaman, surum: x.surum,
+      duzenlenebilir: x.durum === YOK_DURUM.YAPILDI && x.iso <= bugun && (ot.tur === 'admin' || (!!hn && basNorm(x.hoca) === hn))
+    }))
+  };
+}
+export type YoklamaOgrenciKayitlari = Awaited<ReturnType<typeof yoklamaOgrenciKayitlari>>;
+
+/** Tek öğrencinin bir yoklamadaki durumunu günceller (hoca kendi dersinde, yönetim hepsinde). */
+export async function yoklamaOgrenciGuncelle(p: { anahtar: string; no: string; yok1: boolean; yok2: boolean; surum: number }) {
+  const ot = await oturumGerekli(HOCA_ROLLERI);
+  const no = String(p?.no ?? '').trim();
+  const [o] = await vt().select({ adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi }).from(schema.ogrenciler).where(eq(schema.ogrenciler.no, no));
+  if (!o) throw new KullaniciHatasi('Öğrenci bulunamadı.');
+  const kaydeden = kimAdi(ot) + (ot.tur === 'admin' ? ' (yönetici)' : '');
+  const sonuc = await vt().transaction(async tx => {
+    await tx.execute(sql`select pg_advisory_xact_lock(7308)`);
+    const k = (await kayitlar(tx, eq(schema.yoklamalar.anahtar, String(p?.anahtar ?? ''))))[0];
+    if (!k) throw new KullaniciHatasi('Yoklama bulunamadı; silinmiş olabilir. Listeyi yenileyin.');
+    hocaKapsami(ot, k.hoca);
+    if (k.surum !== Number(p.surum)) throw new KullaniciHatasi(`Bu yoklama siz açtıktan sonra değişti (${k.kaydeden}, ${k.zaman}). Listeyi yenileyip tekrar deneyin.`);
+    if (k.durum !== YOK_DURUM.YAPILDI) throw new KullaniciHatasi('Bu ders "yapılmadı" olarak kayıtlı; devamsızlık girilemez.');
+    if (k.iso > bugunIso()) throw new KullaniciHatasi('İleri tarihli bir derse yoklama girilemez.');
+    const d = ogrenciYoklamaDegistir(k, no, !!p.yok1, !!p.yok2);
+    const kaynak = k.kaynak && k.kaynak !== 'Manuel' ? 'Karma' : 'Manuel';
+    const [r] = await tx.update(schema.yoklamalar).set({ ...d, kaynak, kaydeden, zaman: new Date(), surum: sql`${schema.yoklamalar.surum} + 1` })
+      .where(eq(schema.yoklamalar.anahtar, k.anahtar)).returning({ surum: schema.yoklamalar.surum, zaman: schema.yoklamalar.zaman });
+    return { k, surum: r.surum, zaman: zamanYaz(r.zaman) };
+  });
+  const durum = (y: boolean) => (y ? 'yok' : 'geldi');
+  await islemKaydet('Yoklama', `Öğrenci güncellendi: ${no} ${(o.adi + ' ' + o.soyadi).trim()} · ${sonuc.k.sinif} · ${sonuc.k.ders} · ${isoTr(sonuc.k.iso)} ${sonuc.k.saat} · 1. ders ${durum(!!p.yok1)}, 2. ders ${durum(!!p.yok2)}`);
+  return { surum: sonuc.surum, zaman: sonuc.zaman, kaydeden };
 }
 
 /* ---------- Evrak kaydı (QR) ---------- */
