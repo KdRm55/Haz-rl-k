@@ -267,8 +267,10 @@ export async function hocaYoklamaDokumu(teacher: string, basHam?: string, bitHam
   // Sınıf listesinde olmayıp yoklamada geçen öğrencilerin adları
   const bilinen = new Set(siniflar.flatMap(s => s.ogrenciler.map(o => o.no)));
   const disari = [...new Set(k.flatMap(x => x.liste).filter(n => !bilinen.has(n)))];
-  const isim = new Map((disari.length ? await vt().select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi })
+  const isim = new Map((disari.length ? await vt().select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi, durum: schema.ogrenciler.durum })
     .from(schema.ogrenciler).where(inArray(schema.ogrenciler.no, disari)) : []).map(o => [o.no, o]));
+  // Kaydı silinen öğrenci eski yoklama listelerinde geçse de dökümde yer almaz
+  const silinen = new Set([...isim.values()].filter(o => o.durum === 'silindi').map(o => o.no));
   const sinifAdlari = [...new Set(k.map(x => x.sinif))].sort((a, b) => {
     const ia = siniflar.findIndex(s => s.ad === a), ib = siniflar.findIndex(s => s.ad === b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, 'tr');
@@ -285,7 +287,7 @@ export async function hocaYoklamaDokumu(teacher: string, basHam?: string, bitHam
       const sira = (s?.ogrenciler ?? []).map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi }));
       ks.forEach(x => x.liste.forEach(n => {
         const yeni = simdiki.get(n);
-        if (sira.some(o => o.no === n) || (yeni && yeni !== ad && raporda.has(yeni))) return;
+        if (silinen.has(n) || sira.some(o => o.no === n) || (yeni && yeni !== ad && raporda.has(yeni))) return;
         const o = isim.get(n) ?? s?.ogrenciler.find(z => z.no === n);
         sira.push({ no: n, adi: o?.adi ?? '', soyadi: o?.soyadi ?? '' });
       }));

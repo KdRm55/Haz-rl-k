@@ -1,6 +1,6 @@
 /** Hoca ekranının sunucu işlemleri — Code.gs getTeachers … getManualAttendance karşılığı. */
 import 'server-only';
-import { asc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { vt, schema } from '@/db';
 import { KullaniciHatasi } from './hata';
 import { basNorm, subeEslestir, TR_GUN_SIRA } from './metin';
@@ -22,7 +22,8 @@ export async function aktifSiniflar(): Promise<SinifOgrencili[]> {
   const [siniflar, ogrenciler] = await Promise.all([
     db.select().from(schema.siniflar).where(eq(schema.siniflar.aktif, true)),
     db.select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi, sinifId: schema.ogrenciler.sinifId })
-      .from(schema.ogrenciler).where(isNotNull(schema.ogrenciler.sinifId))
+      // Kaydı silinen öğrenci sınıfı kalmış olsa da listelere (sirkü, yoklama, döküm) girmez
+      .from(schema.ogrenciler).where(and(isNotNull(schema.ogrenciler.sinifId), eq(schema.ogrenciler.durum, 'aktif')))
       .orderBy(asc(schema.ogrenciler.sinifSira), asc(schema.ogrenciler.no))
   ]);
   return siniflar
