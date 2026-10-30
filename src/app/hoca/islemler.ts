@@ -16,6 +16,7 @@ export async function yoklamaHaftasiIslemi(teacher: string, hafta: string) { ret
 export async function yoklamaGetirIslemi(o: yk.OturumGirdisi) { return sar(() => yk.yoklamaGetir(o)); }
 export async function yoklamaKaydetIslemi(p: yk.KayitGirdisi) { return sar(() => yk.yoklamaKaydet(p)); }
 export async function yoklamaSilIslemi(anahtar: string) { return sar(() => yk.yoklamaSil(String(anahtar))); }
+export async function hocaYoklamaDokumuIslemi(teacher: string, bas: string, bit: string) { return sar(() => yk.hocaYoklamaDokumu(String(teacher), String(bas), String(bit))); }
 export async function yoklamaOgrenciAraIslemi(q: string) { return sar(() => yk.yoklamaOgrenciAra(String(q))); }
 export async function yoklamaOgrenciKayitlariIslemi(no: string) { return sar(() => yk.yoklamaOgrenciKayitlari(String(no))); }
 export async function yoklamaOgrenciGuncelleIslemi(p: Parameters<typeof yk.yoklamaOgrenciGuncelle>[0]) { return sar(() => yk.yoklamaOgrenciGuncelle(p)); }

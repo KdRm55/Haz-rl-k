@@ -106,6 +106,8 @@ export const YOKLAMA_HOCA_CSS = `
 .yo-geldi{color:#1F6B43;}
 .yo-hata{font-size:12.5px; color:#B42318; margin-top:4px;}
 .yk-ogrenci .btn-kucuk{width:auto; padding:6px 12px; font-size:13px;}
+.yk-dokum-not{margin:0 16px 8px; font-size:13px; color:var(--muted); line-height:1.45;}
+.yk-dokum-durum{margin:0 16px 16px; font-size:13px; color:var(--navy);}
 .yk-editor{margin-top:26px; border:1px solid var(--line); border-left:4px solid var(--navy); border-radius:12px; background:#fff;}
 .yk-ed-bas{padding:16px 18px 10px; display:flex; flex-wrap:wrap; gap:8px 18px; align-items:baseline; justify-content:space-between;}
 .yk-ed-bas h3{margin:0; font-family:var(--serif); font-size:19px;}

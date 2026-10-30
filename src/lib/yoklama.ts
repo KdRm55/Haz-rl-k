@@ -240,6 +240,56 @@ export async function yoklamaOgrenciGuncelle(p: { anahtar: string; no: string; y
   return { surum: sonuc.surum, zaman: sonuc.zaman, kaydeden };
 }
 
+/* ---------- Hocanın yoklama dökümü (PDF) ---------- */
+/** Hücre: G geldi, Y yok, I izinli (yok ama izinli), '' o gün listede değil; ders yapılmadıysa oturumun durumu "Yapılmadı". */
+export type DokumHucre = 'G' | 'Y' | 'I' | '';
+
+/**
+ * Bir öğretim elemanının tarih aralığında girilmiş bütün yoklamaları, sınıf sınıf (sınıf listesi sırasıyla).
+ * Başlangıç verilmezse dönem başlangıcı (yoklama ayarı), bitiş verilmezse bugün.
+ */
+export async function hocaYoklamaDokumu(teacher: string, basHam?: string, bitHam?: string) {
+  const ot = await oturumGerekli(HOCA_ROLLERI);
+  if (!teacher?.trim()) throw new KullaniciHatasi('Öğretim elemanı seçilmedi.');
+  hocaKapsami(ot, teacher);
+  const ayar = yokAyarCoz(await ayarlarOku(vt()));
+  const bugun = bugunIso();
+  const bas = isoGecerli(basHam ?? '') ? basHam! : ayar.baslangic || isoEkle(bugun, -120);
+  const bit = isoGecerli(bitHam ?? '') ? bitHam! : bugun;
+  if (bas > bit) throw new KullaniciHatasi('Başlangıç tarihi bitişten sonra olamaz.');
+  const hn = basNorm(teacher);
+  const [siniflar, tum] = await Promise.all([aktifSiniflar(), kayitlar(vt(), and(gte(schema.yoklamalar.tarih, bas), sql`${schema.yoklamalar.tarih} <= ${bit}`))]);
+  const k = tum.filter(x => basNorm(x.hoca) === hn)
+    .sort((a, b) => a.iso.localeCompare(b.iso) || a.saat.localeCompare(b.saat, 'tr') || a.ders.localeCompare(b.ders, 'tr'));
+  // Sınıf listesinde olmayıp yoklamada geçen öğrencilerin adları
+  const bilinen = new Set(siniflar.flatMap(s => s.ogrenciler.map(o => o.no)));
+  const disari = [...new Set(k.flatMap(x => x.liste).filter(n => !bilinen.has(n)))];
+  const isim = new Map((disari.length ? await vt().select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi })
+    .from(schema.ogrenciler).where(inArray(schema.ogrenciler.no, disari)) : []).map(o => [o.no, o]));
+  const sinifAdlari = [...new Set(k.map(x => x.sinif))].sort((a, b) => {
+    const ia = siniflar.findIndex(s => s.ad === a), ib = siniflar.findIndex(s => s.ad === b);
+    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, 'tr');
+  });
+  return {
+    teacher: teacher.trim(), bas: isoTr(bas), bit: isoTr(bit), olusturma: zamanYaz(new Date()),
+    siniflar: sinifAdlari.map(ad => {
+      const ks = k.filter(x => x.sinif === ad), s = siniflar.find(z => z.ad === ad);
+      const sira = (s?.ogrenciler ?? []).map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi }));
+      ks.forEach(x => x.liste.forEach(n => { if (!sira.some(o => o.no === n)) { const o = isim.get(n) ?? s?.ogrenciler.find(z => z.no === n); sira.push({ no: n, adi: o?.adi ?? '', soyadi: o?.soyadi ?? '' }); } }));
+      const hucre = (x: Kayit, no: string, yok: string[]): DokumHucre => !x.liste.includes(no) ? '' : !yok.includes(no) ? 'G' : x.izinli.includes(no) ? 'I' : 'Y';
+      const ogrenciler = sira.map(o => {
+        const h = ks.map(x => (x.durum === YOK_DURUM.YAPILMADI ? ['', ''] as [DokumHucre, DokumHucre] : [hucre(x, o.no, x.yok1), hucre(x, o.no, x.yok2)] as [DokumHucre, DokumHucre]));
+        return { ...o, h, yok: h.reduce((t, [a, b]) => t + Number(a === 'Y') + Number(b === 'Y'), 0) };
+      });
+      return {
+        ad, oturumlar: ks.map(x => ({ tarih: isoTr(x.iso), gun: gunAdi(x.iso), saat: x.saat, ders: x.ders, tur: x.tur, yapilmadi: x.durum === YOK_DURUM.YAPILMADI })),
+        ogrenciler, toplamYok: ogrenciler.reduce((t, o) => t + o.yok, 0)
+      };
+    })
+  };
+}
+export type HocaYoklamaDokumu = Awaited<ReturnType<typeof hocaYoklamaDokumu>>;
+
 /* ---------- Evrak kaydı (QR) ---------- */
 export type EvrakSayfasi = {
   hoca: string; sinif: string; tur: string; hafta: string; sayfa: number; toplam: number; satir: number;
