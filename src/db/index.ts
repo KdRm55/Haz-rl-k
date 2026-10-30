@@ -10,12 +10,15 @@ export function vt(): Vt {
   if (globalIcin.__vt) return globalIcin.__vt;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL tanımlı değil. .env.example dosyasına bakın.');
-  // prepare: false → havuzlu (pgbouncer) bağlantılarla uyumlu
+  // Serverless ortamda (Vercel) her fonksiyon için max: 1 ve kısa idle_timeout (5sn)
+  // Supabase havuzunun (15-20 bağlantı) dolmasını ve sayfaların kilitlenmesini önler.
+  const isProd = process.env.NODE_ENV === 'production';
   const sql = postgres(url, {
     prepare: false,
-    max: 5,
-    idle_timeout: 20,
-    connect_timeout: 10
+    max: isProd ? 1 : 5,
+    idle_timeout: isProd ? 5 : 20,
+    connect_timeout: 10,
+    max_lifetime: 300
   });
   globalIcin.__vt = drizzle(sql, { schema });
   return globalIcin.__vt;
