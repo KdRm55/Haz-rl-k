@@ -82,7 +82,7 @@ Erişim kodları aktarılmaz: yeni sistemde ortak kod yoktur, herkes kendi hesab
 
    Bütün tablolarda satır güvenliği (RLS) açıktır; Supabase'in REST API'si tablolara erişemez, uygulama doğrudan veritabanına bağlanır. Neon da aynı şekilde kullanılabilir (havuzlu adres).
 2. **Settings → Environment Variables**: `SESSION_SECRET` (en az 32 karakter; üretmek için `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`).
-3. Depoyu Vercel'e bağlayıp yayınlayın; Next.js otomatik tanınır.
+3. Depoyu Vercel'e bağlayıp yayınlayın; Next.js otomatik tanınır. Fonksiyonlar `vercel.json` ile veritabanının yanında, **Dublin** (`dub1`) bölgesinde çalışır; Supabase projeniz başka bir bölgedeyse `regions` değerini ona en yakın Vercel bölgesiyle değiştirin (ör. Frankfurt için `fra1`). Uzak bölgede her sorgu ~80 ms gecikir ve panel yavaşlar.
 4. Kendi bilgisayarınızda `.env` içine Session pooler adresini `DATABASE_URL` olarak yazıp `npm run db:migrate`, `npm run aktar -- … --yaz` ve `npm run yonetici` komutlarını çalıştırın.
 5. Logoyu `public/logo.png` olarak ekleyin (yoksa sayfalar logosuz açılır).
 
@@ -140,5 +140,6 @@ Ortak erişim kodları yerine herkesin kendi hesabı vardır. Şifreler yalnızc
 - **Yoklama ve tarama:** Kurallar aynıdır (her ders 2 saat, ders bazında sınır, izni yalnızca yönetim değiştirir, çok sayfalı sirkünün sayfaları ayrı ayrı taranabilir). Eşzamanlı düzenlemede kayıt sürüm numarasıyla denetlenir; sizden sonra biri kaydettiyse yoklama yeniden açılmalıdır. PDF okuyucu (pdf.js) CDN'den değil uygulamanın kendi paketinden yüklenir. Sirküdeki hücre yerleri ekranda değil tam A4 boyutundaki görünmez bir kopyada ölçülür; dar ekranda basılan sirküler de doğru okunur.
 - **Tarama görüntüleri** Drive yerine veritabanında saklanır (sayfa başına ~100–150 KB) ve yalnızca yönetim panelinden görüntülenir. Kişisel veri olduğu için dönem sonunda **Yoklama → Bütün tarama görüntülerini sil** ile silinmeli; gerekirse önce görüntülerle birlikte tam yedek alınır.
 - **Yedek:** "Tam yedek al" e-tablonun Drive kopyası yerine bütün tabloları içeren bir JSON dosyası indirir; `npm run geri-yukle` ile tek işlemde geri yüklenir. Supabase'in günlük yedekleri (ücretli planda belirli bir ana dönme) ya da Neon'un geri dönme özelliği de kullanılabilir.
-#   H a z - r l - k  
+#   H a z - r l - k 
+ 
  
