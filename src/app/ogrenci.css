@@ -356,3 +356,23 @@ body:has(.op)::before, body:has(.op)::after { display:none; }
 .dv-ozet-baslik { font-size:15px; font-weight:700; color:#1e293b; }
 .dv-ozet-alt { font-size:13px; color:#475569; margin-top:2px; }
 .dv-ozet.yakin .dv-ozet-alt { color:#9a5a12; } .dv-ozet.asti .dv-ozet-alt { color:var(--err); }
+
+/* Devamsızlık: haftalık kareler (her gün iki kare: 1. ve 2. ders) */
+.dv-lejant { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; font-size:12px; color:#64748b; margin:0 0 12px; }
+.dv-lejant span { display:inline-flex; align-items:center; gap:5px; }
+.dv-lejant i { display:inline-block; width:13px; height:10px; border-radius:3px; }
+.dv-lejant em { flex-basis:100%; font-style:normal; font-size:11.5px; color:#94a3b8; }
+.k-G { background:#8fd0b0; } .k-Y { background:#d9534f; } .k-I { background:#f2b45c; } .k-X { background:#dfe2ec; }
+.dv-haftalar { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.op .dv-hafta, .dv-hafta { width:auto; display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 7px 4px; border:1px solid transparent; border-radius:10px;
+  background:transparent; color:inherit; cursor:pointer; box-shadow:none; transform:none; font-weight:400; }
+.op .dv-hafta:hover, .dv-hafta:hover { background:#f5f6fb; transform:none; box-shadow:none; }
+.op .dv-hafta.secili, .dv-hafta.secili { border-color:#b9bfe3; background:#eef0fb; }
+.dv-hafta:focus-visible { outline:3px solid var(--accent); outline-offset:1px; }
+.dv-gunler { display:flex; gap:3px; }
+.dv-gun { display:flex; flex-direction:column; gap:2px; }
+.dv-gun i { display:block; width:14px; height:11px; border-radius:3px; }
+.dv-hafta small { font-size:11px; color:#64748b; white-space:nowrap; }
+.dv-ders .dv-liste { margin-top:8px; background:#fafbfd; border:1px solid #eef1f6; border-radius:10px; padding:4px 10px; }
+.dv-ders .dv-liste li:first-child { border-top:0; }
+.dv-liste .d-geldi { color:var(--ok); font-weight:600; }

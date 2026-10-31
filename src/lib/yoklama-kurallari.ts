@@ -162,7 +162,8 @@ export function yoklamaBirlestir(g: YoklamaGirdisi, mevcut: Pick<YoklamaKaydi, '
 export type DersDevamsizligi = {
   ders: string; yokSaat: number; izinliSaat: number; oturum: number; haftalikSaat: number; toplamSaat: number; sinir: number | null;
   durum: '' | 'yakin' | 'asti';
-  kayitlar: { iso: string; tarih: string; saat: string; durum: 'yok' | 'geldi' | 'izinli' | 'yapilmadi'; yokSaat: number; tur: string }[];
+  /** y1, y2: o gün 1. / 2. derste yok (izinliyse izinli olduğu saat); ders yapılmadıysa ikisi de false. */
+  kayitlar: { iso: string; tarih: string; saat: string; durum: 'yok' | 'geldi' | 'izinli' | 'yapilmadi'; yokSaat: number; tur: string; y1: boolean; y2: boolean }[];
 };
 
 /** Öğrencinin ders ders devamsızlığı. haftalik: haftalikDersSaatleri() (sınır için). */
@@ -183,7 +184,8 @@ export function devamsizlikHesapla(no: string, oturumlar: YoklamaKaydi[], ayar: 
       else if (izinli) durum = 'geldi';
       else { d.yokSaat += saat; durum = saat ? 'yok' : 'geldi'; }
     }
-    d.kayitlar.push({ iso: k.iso, tarih: isoTr(k.iso), saat: k.saat, durum, yokSaat: saat, tur: k.tur });
+    const yapildi = durum !== 'yapilmadi';
+    d.kayitlar.push({ iso: k.iso, tarih: isoTr(k.iso), saat: k.saat, durum, yokSaat: saat, tur: k.tur, y1: yapildi && y1, y2: yapildi && y2 });
   }
   return Object.entries(dersler).map(([dk, d]) => {
     const hs = haftalik ? haftalik[dk] || 0 : 0;

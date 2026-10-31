@@ -38,7 +38,7 @@ type Ortak = {
 export type DevamsizlikOzeti = {
   sinirYuzde: number; sinirVar: boolean; sonTarih: string;
   dersler: { ders: string; yokSaat: number; izinliSaat: number; oturum: number; sinir: number | null; durum: '' | 'yakin' | 'asti';
-    kayitlar: { iso: string; tarih: string; saat: string; durum: 'yok' | 'geldi' | 'izinli' | 'yapilmadi'; yokSaat: number; tur: string }[] }[];
+    kayitlar: { iso: string; tarih: string; saat: string; durum: 'yok' | 'geldi' | 'izinli' | 'yapilmadi'; yokSaat: number; tur: string; y1?: boolean; y2?: boolean }[] }[];
 };
 
 export type SorguSonucu =

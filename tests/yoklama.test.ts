@@ -109,6 +109,7 @@ describe('devamsızlık hesabı', () => {
     expect(d).toMatchObject({ ders: 'Sarf', yokSaat: 3, izinliSaat: 2, oturum: 3, haftalikSaat: 4, toplamSaat: 56, sinir: 11, durum: '' });
     expect(d.kayitlar.map(k => [k.iso, k.durum, k.yokSaat])).toEqual([
       ['2026-11-11', 'yapilmadi', 0], ['2026-11-09', 'izinli', 2], ['2026-11-04', 'yok', 1], ['2026-11-02', 'yok', 2]]);
+    expect(d.kayitlar.map(k => [k.y1, k.y2])).toEqual([[false, false], [true, true], [true, false], [true, true]]);
     expect(devamsizlikHesapla('1', oturumlar, ayar, { SARF: 4 })).toHaveLength(1);
   });
   it('sınıra yaklaşan (%75) ve aşan; sınır yoksa durum boş', () => {
