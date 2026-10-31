@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { dsArsivIslemi, dsDersTarihIslemi, dsDurumIslemi, dsGuncelleIslemi, dsOgrenciGuncelleIslemi, dsOlusturIslemi, dsYayinIslemi, dsYerKaydetIslemi } from '@/app/yonetim/islemler';
+import { dsArsivIslemi, dsBelgeKaydetIslemi, dsBelgeOnizleIslemi, dsDersTarihIslemi, dsDurumIslemi, dsGuncelleIslemi, dsOgrenciGuncelleIslemi, dsOlusturIslemi, dsYayinIslemi } from '@/app/yonetim/islemler';
+import { dosyaOku } from '@/lib/dosya-oku';
 import type { DsDurum, DsYayinAlani } from '@/lib/donem-sinav';
 import type { Sonuc } from '@/lib/islem-sonucu';
 import { DonemPuanTablosu, DonemPuanYukleme } from './DonemPuan';
-import { ListeTablosu, Mesaj, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
+import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
 
 type Sinav = DsDurum['sinavlar'][number];
 type FormDers = { ders: string; tarih: string; saat: string; eski?: boolean };
@@ -53,7 +54,72 @@ function SinavFormu({ d, x, kapat, kaydet }: { d: DsDurum; x: Sinav | null; kapa
 }
 
 type Ders = Sinav['dersler'][number];
-const ADIMLAR = [['tarih', 'Sınav tarihi'], ['yer', 'Sınav yeri'], ['sonuc', 'Puanlar']] as const;
+const ADIMLAR = [['tarih', 'Sınav tarihi'], ['yer', 'Sınav giriş belgesi'], ['sonuc', 'Puanlar']] as const;
+type BelgeOnizleme = Extract<Awaited<ReturnType<typeof dsBelgeOnizleIslemi>>, { ok: true }>['veri'];
+
+/** Sınav giriş belgesi: kelebek dağıtım programının öğrenci listesi (her öğrencinin salonu ve sırası). */
+function GirisBelgesi({ x, d, calis }: { x: Sinav; d: Ders; calis: (p: Promise<Sonuc<DsDurum>>, basari: string, onay?: string) => Promise<void> }) {
+  const cagir = useCagir();
+  const [acik, setAcik] = useState(false);
+  const [dosya, setDosya] = useState<{ ad: string; satirlar: string[][] } | null>(null);
+  const [oniz, setOniz] = useState<BelgeOnizleme | null>(null);
+  const [durum, setDurum] = useState('');
+  const b = d.belge;
+
+  async function sec(f: File | undefined) {
+    setOniz(null); setDosya(null);
+    if (!f) return;
+    setDurum('Okunuyor…');
+    try {
+      const k = await dosyaOku(f);
+      const satirlar = k.sayfalar.map(ad => k.satirlar(ad)).find(r => r.some(y => y.some(v => v.trim())));
+      if (!satirlar) { setDurum('Dosyada veri bulunamadı.'); return; }
+      const r = await cagir(dsBelgeOnizleIslemi(x.kod, d.ders, satirlar));
+      if (!r.ok) { setDurum(r.hata); return; }
+      setDurum(''); setDosya({ ad: f.name, satirlar }); setOniz(r.veri);
+    } catch (e) { setDurum('Dosya okunamadı: ' + (e instanceof Error ? e.message : String(e))); }
+  }
+  async function kaydet() {
+    if (!dosya || !oniz) return;
+    await calis(dsBelgeKaydetIslemi(x.kod, d.ders, dosya.satirlar, dosya.ad),
+      `${d.ders} sınav giriş belgesi kaydedildi (${oniz.sayilar.kayit} öğrenci, ${oniz.sayilar.salon} salon).` + (d.yerYayinda ? ' Liste yayında olduğu için öğrenciler yeni yerlerini hemen görür.' : ' Duyurmak için "Sınav giriş belgesini yayınla"ya basın.'));
+    setAcik(false); setOniz(null); setDosya(null);
+  }
+  const s = oniz?.sayilar;
+  return (
+    <div className="ds-belge">
+      <div className="ds-belge-ust">
+        <span>{b ? <>Sınav giriş belgesi: <b>{b.ogrenci}</b> öğrenci · {b.salon} salon{b.yer ? ` · ${b.yer}` : ''} <span className="hint">({b.dosya || 'liste'}, {b.yukleme})</span></>
+          : <span className="uyari-metin">Sınav giriş belgesi (kelebek listesi) yüklenmedi.</span>}</span>
+        <button type="button" className="ds-baglanti" onClick={() => { setAcik(a => !a); setOniz(null); setDurum(''); }}>{acik ? 'Vazgeç' : b ? 'Listeyi yenile' : 'Liste yükle'}</button>
+      </div>
+      {acik && (
+        <div className="ds-belge-yukle">
+          <p className="aciklama" style={{ margin: '0 0 6px' }}>Kelebek dağıtım programının öğrenci listesi çıktısını (Excel ya da CSV) seçin. Öğrenci numarası, sınav salonu ve sıra numarası okunur; tarih, saat ve sınav yeri dosyada varsa alınır. Kitapçık türü saklanır, öğrenciye gösterilmez.{b ? ' Yeni liste eskisinin yerine geçer.' : ''}</p>
+          <input type="file" accept=".xlsx,.csv" onChange={e => sec(e.target.files?.[0])} />
+          {durum && <div className="hint" style={{ textAlign: 'left', marginTop: 6 }}>{durum}</div>}
+          {oniz && s && (
+            <>
+              <div className="ozet" style={{ marginTop: 10 }}>
+                <OzetKutu deger={s.kayit} etiket="öğrenci" tur="yeni" /><OzetKutu deger={s.salon} etiket="salon" />
+                <OzetKutu deger={s.hatali} etiket="alınmayacak satır" tur={s.hatali ? 'uyari' : ''} />
+                <OzetKutu deger={s.siraTekrar} etiket="salonda tekrar eden sıra" tur={s.siraTekrar ? 'uyari' : ''} />
+                <OzetKutu deger={s.sinavdaYok} etiket="sınavda olup listede olmayan" tur={s.sinavdaYok ? 'uyari' : ''} />
+              </div>
+              <div className="sy-salonlar">{oniz.salonOzet.map(y => <span key={y.salon} className="sy-salon">{y.salon}: {y.n}</span>)}</div>
+              <div className="hint" style={{ textAlign: 'left' }}>Dosyadaki tarih: {oniz.tarih || '—'}{oniz.saat ? ' ' + oniz.saat : ''}{oniz.yer ? ' · ' + oniz.yer : ''}.
+                {' '}{d.tarih ? `Öğrencilere dersin tarihi (${[d.tarih, d.saat].filter(Boolean).join(' ')}) gösterilir.` : 'Dersin tarihi boş olduğu için dosyadaki tarih alınır.'}</div>
+              <ListeTablosu baslik="Alınmayacak satırlar" sayi={s.hatali} kolonlar={['Dosya satırı', 'No', 'Ad', 'Neden']} satirlar={oniz.hatali.map(y => [y.satir, y.no, y.ad, y.neden])} />
+              <ListeTablosu baslik="Aynı salonda tekrar eden sıra numaraları" sayi={s.siraTekrar} kolonlar={['Salon', 'Sıra', 'Numaralar']} satirlar={oniz.siraTekrar.map(y => [y.salon, y.sira, y.nolar])} />
+              <ListeTablosu baslik="Sınavda olup listede olmayanlar (sınav yerini göremez)" sayi={s.sinavdaYok} kolonlar={['No', 'Adı Soyadı', 'Sınıf']} satirlar={oniz.sinavdaYok.map(y => [y.no, y.ad, y.sinif])} />
+              <button type="button" className="btn btn-primary btn-kucuk" disabled={!s.kayit} onClick={kaydet}>{b ? 'Listeyi yenile' : 'Listeyi kaydet'} ({s.kayit} öğrenci)</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 const acikMi = (d: Ders, a: DsYayinAlani) => (a === 'tarih' ? d.tarihYayinda : a === 'yer' ? d.yerYayinda : d.sonucYayinda);
 
 /** Bir dersin satırı: tarih/saat düzenleme, puan durumu ve sırayla yayın (tarih → yer → puanlar). */
@@ -66,14 +132,14 @@ function DersSatiri({ x, d, bekliyor, calis }: {
   const sonAcik = [...ADIMLAR].reverse().find(([a]) => acikMi(d, a))?.[0] ?? null;
   const yayinla = (a: DsYayinAlani) => {
     const onay = a === 'tarih' ? `${x.ad} · ${d.ders} sınav tarihi (${[d.tarih, d.saat].filter(Boolean).join(' ')}) öğrencilere duyurulsun mu?`
-      : a === 'yer' ? `${x.ad} · ${d.ders} sınav yerleri öğrencilere açıklansın mı?\n\nYerleri aşağıdaki "Sınav yerleri" bölümünden kontrol edin; boş bırakılan sınıf kendi dersliğinde sınava girer.`
+      : a === 'yer' ? `${x.ad} · ${d.ders} sınav giriş belgesi öğrencilere duyurulsun mu?\n\nÖğrenciler salonlarını, sıra numaralarını, sınav yerini, tarihi ve saati görür (${d.belge?.ogrenci ?? 0} öğrenci, ${d.belge?.salon ?? 0} salon).`
       : `${x.ad} · ${d.ders} puanları öğrencilere yayınlansın mı?\n\nGirilen: ${d.girilen} / ${d.n}, girmedi: ${d.girmedi}, boş: ${d.bos}` + (d.bos ? `\n\nDİKKAT: ${d.bos} öğrencinin puanı henüz girilmemiş; bu öğrenciler "Girilmedi" görür.` : '');
-    const basari = a === 'tarih' ? `${d.ders} sınav tarihi öğrencilere duyuruldu.` : a === 'yer' ? `${d.ders} sınav yerleri öğrencilere açıklandı.` : `${d.ders} puanları yayınlandı. Öğrenciler kendi hesaplarından görebilir.`;
+    const basari = a === 'tarih' ? `${d.ders} sınav tarihi öğrencilere duyuruldu.` : a === 'yer' ? `${d.ders} sınav giriş belgesi duyuruldu; öğrenciler salon ve sıralarını görebilir.` : `${d.ders} puanları yayınlandı. Öğrenciler kendi hesaplarından görebilir.`;
     calis(dsYayinIslemi(x.kod, a, d.ders, true), basari, onay);
   };
-  const gizle = (a: DsYayinAlani) => calis(dsYayinIslemi(x.kod, a, d.ders, false), `${d.ders}: ${a === 'tarih' ? 'sınav duyurusu' : a === 'yer' ? 'sınav yeri' : 'puanlar'} öğrencilerden gizlendi.`,
-    a === 'tarih' ? `${d.ders} sınavı öğrencilerden gizlensin mi? Sınav yeri ve puanlar da gizlenir.` : a === 'yer' ? `${d.ders} sınav yeri gizlensin mi? Puanlar da gizlenir.` : `${d.ders} puanları öğrencilerden gizlensin mi?`);
-  const engel = sonraki === 'tarih' && !d.tarih ? 'Önce sınav tarihini girin.' : sonraki === 'sonuc' && !d.girilen && !d.girmedi ? 'Puanları girdikten sonra yayınlayın.' : '';
+  const gizle = (a: DsYayinAlani) => calis(dsYayinIslemi(x.kod, a, d.ders, false), `${d.ders}: ${a === 'tarih' ? 'sınav duyurusu' : a === 'yer' ? 'sınav giriş belgesi' : 'puanlar'} öğrencilerden gizlendi.`,
+    a === 'tarih' ? `${d.ders} sınavı öğrencilerden gizlensin mi? Sınav giriş belgesi ve puanlar da gizlenir.` : a === 'yer' ? `${d.ders} sınav giriş belgesi gizlensin mi? Puanlar da gizlenir.` : `${d.ders} puanları öğrencilerden gizlensin mi?`);
+  const engel = sonraki === 'tarih' && !d.tarih ? 'Önce sınav tarihini girin.' : sonraki === 'yer' && !d.belge ? 'Önce sınav giriş belgesini (kelebek listesi) yükleyin.' : sonraki === 'sonuc' && !d.girilen && !d.girmedi ? 'Puanları girdikten sonra yayınlayın.' : '';
 
   return (
     <div className="ds-ders">
@@ -94,6 +160,7 @@ function DersSatiri({ x, d, bekliyor, calis }: {
         </div>
         <div className="ds-puan-ozet">Puan: <b>{d.girilen}</b> / {d.n}{d.girmedi ? ` · ${d.girmedi} girmedi` : ''}{d.bos ? ` · ${d.bos} boş` : ''}{d.ort != null ? ` · ort. ${puanTr(d.ort)}` : ''}</div>
       </div>
+      <GirisBelgesi x={x} d={d} calis={calis} />
       <ol className="ds-adimlar" aria-label={d.ders + ' yayın aşamaları'}>
         {ADIMLAR.map(([a, et], i) => {
           const acik = acikMi(d, a);
@@ -102,10 +169,10 @@ function DersSatiri({ x, d, bekliyor, calis }: {
       </ol>
       <div className="ds-eylem" style={{ marginTop: 8 }}>
         {sonraki && <button type="button" className="btn btn-primary btn-kucuk" disabled={bekliyor || !!engel} title={engel || undefined} onClick={() => yayinla(sonraki)}>
-          {sonraki === 'tarih' ? 'Sınav tarihini yayınla' : sonraki === 'yer' ? 'Sınav yerini yayınla' : 'Puanları yayınla'}</button>}
+          {sonraki === 'tarih' ? 'Sınav tarihini yayınla' : sonraki === 'yer' ? 'Sınav giriş belgesini yayınla' : 'Puanları yayınla'}</button>}
         {!sonraki && <span className="ds-cip acik">Bütün aşamalar yayında</span>}
         {sonAcik && <button type="button" className="btn btn-secondary btn-kucuk" disabled={bekliyor} onClick={() => gizle(sonAcik)}>
-          {sonAcik === 'tarih' ? 'Sınavı gizle' : sonAcik === 'yer' ? 'Sınav yerini gizle' : 'Puanları gizle'}</button>}
+          {sonAcik === 'tarih' ? 'Sınavı gizle' : sonAcik === 'yer' ? 'Sınav giriş belgesini gizle' : 'Puanları gizle'}</button>}
         {engel && <span className="hint" style={{ textAlign: 'left' }}>{engel}</span>}
       </div>
     </div>
@@ -114,7 +181,6 @@ function DersSatiri({ x, d, bekliyor, calis }: {
 
 function SinavKarti({ x, rol, setVeri, mesaj, duzenle }: { x: Sinav; rol: DsDurum['rol']; setVeri: (d: DsDurum) => void; mesaj: (m: MesajDurumu) => void; duzenle: () => void }) {
   const cagir = useCagir();
-  const [yerler, setYerler] = useState<Record<string, string>>(Object.fromEntries(x.yerler.map(y => [y.sinif, y.ozel])));
   const [alan, setAlan] = useState<'' | 'tablo' | 'yukle'>('');
   const [bekliyor, setBekliyor] = useState(false);
   const admin = rol === 'admin';
@@ -145,18 +211,6 @@ function SinavKarti({ x, rol, setVeri, mesaj, duzenle }: { x: Sinav; rol: DsDuru
       </div>
       {x.dersler.map(d => <DersSatiri key={d.ders} x={x} d={d} bekliyor={bekliyor} calis={calis} />)}
       <ListeTablosu baslik="Sınıf ortalamaları" sayi={sinifSatir.length} kolonlar={['Ders', 'Sınıf', 'Girilen', 'Ortalama', 'En düşük – en yüksek']} satirlar={sinifSatir} />
-      {x.yerler.length > 0 && (
-        <div className="ds-alt-bolum">
-          <h4>Sınav yerleri</h4>
-          <p className="aciklama" style={{ margin: 0 }}>Boş bırakılan sınıf kendi dersliğinde sınava girer. Yer, her dersin 2. aşamasında (&quot;Sınav yerini yayınla&quot;) öğrencilere açıklanır.</p>
-          <div className="ds-yer-izgara">{x.yerler.map(y => (
-            <label key={y.sinif}>{y.sinif}<input type="text" maxLength={60} value={yerler[y.sinif] ?? ''} placeholder={y.derslik ? `${y.derslik} (dersliği)` : 'Derslik tanımlı değil'} onChange={e => setYerler(v => ({ ...v, [y.sinif]: e.target.value }))} /></label>
-          ))}</div>
-          <div className="ds-eylem" style={{ marginTop: 4 }}>
-            <button type="button" className="btn btn-secondary btn-kucuk" disabled={bekliyor} onClick={() => calis(dsYerKaydetIslemi(x.kod, yerler), 'Sınav yerleri kaydedildi.')}>Yerleri kaydet</button>
-          </div>
-        </div>
-      )}
       <div className="ds-eylem">
         <button type="button" className="btn btn-secondary btn-kucuk" onClick={() => setAlan(a => (a === 'tablo' ? '' : 'tablo'))}>{alan === 'tablo' ? 'Puan tablosunu kapat' : 'Puanları gir / düzelt'}</button>
         <button type="button" className="btn btn-secondary btn-kucuk" onClick={() => setAlan(a => (a === 'yukle' ? '' : 'yukle'))}>Puan listesi yükle</button>
@@ -195,7 +249,7 @@ export function DonemSekmesi() {
     const r = form?.x ? await cagir(dsGuncelleIslemi({ kod: form.x.kod, ad: v.ad, dersler: v.dersler })) : await cagir(dsOlusturIslemi(v));
     if (!r.ok) { setMesaj({ metin: r.hata, hata: true }); return false; }
     setVeri(r.veri);
-    setMesaj({ metin: form?.x ? 'Sınav güncellendi.' : 'Sınav oluşturuldu. Sırayla: sınav tarihini yayınlayın, sınav yerini yayınlayın, puanları girip en son puanları yayınlayın. Dersin öğretim elemanı da bu işlemleri kendi ekranından yapabilir.' });
+    setMesaj({ metin: form?.x ? 'Sınav güncellendi.' : 'Sınav oluşturuldu. Her ders için sırayla: sınav tarihini yayınlayın, kelebek listesini yükleyip sınav giriş belgesini yayınlayın, puanları girip en son puanları yayınlayın. Dersin öğretim elemanı da bu işlemleri kendi ekranından yapabilir.' });
     return true;
   }
 
@@ -210,14 +264,14 @@ export function DonemSekmesi() {
           </div>}
         </div>
         <p className="aciklama">{admin ? 'Yıl içi sınavlar. Her dersin tarihi, saati ve puanı ayrıdır. ' : 'Derslerinizin sınavları. Sınavları yönetim oluşturur; tarih, sınav yeri, puanlar ve yayın sizdedir. '}
-          Yayın her ders için sırayla yapılır: <strong>1) sınav tarihi</strong> duyurulur, <strong>2) sınav yeri</strong> açıklanır, <strong>3) puanlar</strong> girildikten sonra en son yayınlanır. Bir aşama yayınlanmadan öğrenci onu görmez; sonraki aşama ancak öncekinden sonra açılır. Sınıf ortalaması en az {d.esik} puan girilmişse gösterilir.</p>
+          Yayın her ders için sırayla yapılır: <strong>1) sınav tarihi</strong> duyurulur, <strong>2) sınav giriş belgesi</strong> (kelebek dağıtım listesi: her öğrencinin salonu ve sırası) yüklenip duyurulur, <strong>3) puanlar</strong> girildikten sonra en son yayınlanır. Bir aşama yayınlanmadan öğrenci onu görmez; sonraki aşama ancak öncekinden sonra açılır. Sınıf ortalaması en az {d.esik} puan girilmişse gösterilir.</p>
         {admin && form && <SinavFormu d={d} x={form.x} kapat={() => setForm(null)} kaydet={kaydet} />}
       </div>
       <Mesaj m={mesaj} />
       {!liste.length ? <div className="durum">{admin
         ? (d.sinavlar.length ? 'Aktif sınav yok (arşivdekileri görmek için kutuyu işaretleyin).' : 'Henüz dönem sınavı tanımlanmadı. "+ Yeni sınav" ile başlayın.')
         : 'Derslerinize ait bir sınav yok. Sınavlar yönetim tarafından oluşturulunca burada görünür.'}</div>
-        : liste.map(x => <SinavKarti key={x.kod + JSON.stringify(x.yerler)} x={x} rol={d.rol} setVeri={setVeri} mesaj={setMesaj} duzenle={() => { setForm({ x }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />)}
+        : liste.map(x => <SinavKarti key={x.kod} x={x} rol={d.rol} setVeri={setVeri} mesaj={setMesaj} duzenle={() => { setForm({ x }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />)}
     </section>
   );
 }

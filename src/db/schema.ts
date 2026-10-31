@@ -220,6 +220,7 @@ export const sinavYeriListeleri = pgTable('sinav_yeri_listeleri', {
   yer: text('yer').notNull().default(''),
   aciklama: text('aciklama').notNull().default(''),
   donemKod: text('donem_kod').notNull().default(''),   // bağlı dönem sınavı (isteğe bağlı)
+  donemDers: text('donem_ders').notNull().default(''), // dönem sınavının bu dersinin sınav giriş belgesi (yayını sınav kartından)
   yayinda: boolean('yayinda').notNull().default(false),
   yukleme: timestamp('yukleme', { withTimezone: true }).notNull().defaultNow(),
   dosya: text('dosya').notNull().default('')

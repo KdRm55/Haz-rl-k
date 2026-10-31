@@ -219,15 +219,18 @@ function ListeKarti({ l, d, setDurum, mesaj, yenile }: { l: Liste; d: SyDurum; s
           : <span className={'ds-cip' + (l.yayinda ? ' acik' : '')}>{l.yayinda ? 'Öğrencilere açık' : 'Gizli'}</span>}
       </div>
       <div className="sy-salonlar">{l.salonlar.map(s => <span key={s.salon} className="sy-salon">{s.salon}: {s.n}</span>)}</div>
+      {l.donemDers && <p className="aciklama" style={{ margin: '6px 0 0' }}>Bu liste {l.donemKod} sınavının &quot;{l.donemDers}&quot; dersinin sınav giriş belgesi. Yenileme ve yayın &quot;Dönem sınavları&quot; sekmesindeki sınav kartından (ya da dersin hocasının ekranından) yapılır.</p>}
       <div className="ds-eylem">
-        <button type="button" className={'btn btn-kucuk ' + (l.yayinda ? 'btn-secondary' : 'btn-primary')} disabled={bekliyor} onClick={() => {
+        {!l.donemDers && <button type="button" className={'btn btn-kucuk ' + (l.yayinda ? 'btn-secondary' : 'btn-primary')} disabled={bekliyor} onClick={() => {
           if (!l.yayinda && !confirm(`"${l.ad}" sınav yerleri öğrencilere açılsın mı?\n\n${l.ogrenci} öğrenci · ${[l.tarih, l.saat || 'saat girilmemiş'].join(' · ')}` +
             (l.saat ? '' : '\n\nDİKKAT: Saat girilmemiş; öğrenciler yalnızca tarihi görür.'))) return;
           calis(syYayinIslemi(l.kod, !l.yayinda));
-        }}>{l.yayinda ? 'Gizle' : 'Yayınla'}</button>
+        }}>{l.yayinda ? 'Gizle' : 'Yayınla'}</button>}
         <button type="button" className="btn btn-secondary btn-kucuk" onClick={() => setDuzen(duzen ? null : { ad: l.ad, sinavKodu: l.sinavKodu, tarih: l.tarih, saat: l.saat, yer: l.yer, aciklama: l.aciklama, donemKod: l.donemKod })}>Bilgileri düzenle</button>
-        <button type="button" className="btn btn-secondary btn-kucuk" onClick={yenile}>Yeni sürümünü yükle</button>
-        <button type="button" className="btn btn-tehlike btn-kucuk" disabled={bekliyor} onClick={() => { if (confirm(`"${l.ad}" listesi silinsin mi? Öğrenciler bu sınavın yerini artık göremez.`)) calis(sySilIslemi(l.kod)); }}>Sil</button>
+        {!l.donemDers && <>
+          <button type="button" className="btn btn-secondary btn-kucuk" onClick={yenile}>Yeni sürümünü yükle</button>
+          <button type="button" className="btn btn-tehlike btn-kucuk" disabled={bekliyor} onClick={() => { if (confirm(`"${l.ad}" listesi silinsin mi? Öğrenciler bu sınavın yerini artık göremez.`)) calis(sySilIslemi(l.kod)); }}>Sil</button>
+        </>}
       </div>
       {duzen && (
         <div className="ds-alt-bolum">

@@ -75,17 +75,18 @@ function SinavDetayi({ s, r, geri }: { s: SinavOgesi; r: Bulunan; geri: () => vo
         <>
           <div className="sn-bolum">
             <div className="sn-bolum-baslik">Sınav tarihi ve yeri</div>
-            {s.yer && <YerKutulari y={s.yer} />}
+            {/* Büyük salon/sıra kutuları: sınava bağlı tek liste varsa (tek dersli dönem sınavı ya da bağımsız liste) */}
+            {s.yer && (s.tip !== 'donem' || s.s.dersler.length === 1) && <YerKutulari y={s.yer} />}
             {s.tip === 'donem' && (
               <>
                 <div className="ds-kutu" style={{ marginTop: s.yer ? 12 : 0 }}>{s.s.dersler.map(x => (
                   <div key={x.ders} className={'ds-satir' + (x.gecti ? ' gecti' : '')}>
                     <span className="ds-ders">{x.ders}</span>
                     <span className="ds-zaman">{[x.tarih, x.saat].filter(Boolean).join(' · ')}</span>
-                    <span className="ds-yer">{x.gecti ? 'Tamamlandı' : (x.yerAcik ?? s.s.yerYayinda) ? (s.yer ? '' : x.yer || '-') : 'Açıklanmadı'}</span>
+                    <span className="ds-yer">{x.gecti ? 'Tamamlandı' : !(x.yerAcik ?? s.s.yerYayinda) ? 'Giriş belgesi açıklanmadı' : x.yer || 'Listede adın yok; idareye başvur'}</span>
                   </div>
                 ))}</div>
-                {!s.s.yerYayinda && !s.yer && <p className="bl-ipucu">Sınav yeri henüz açıklanmadı.</p>}
+                {!s.s.yerYayinda && <p className="bl-ipucu">Sınav giriş belgesi (salon ve sıra numaran) henüz duyurulmadı.</p>}
               </>
             )}
           </div>

@@ -1,0 +1,1 @@
+ALTER TABLE "sinav_yeri_listeleri" ADD COLUMN "donem_ders" text DEFAULT '' NOT NULL;

@@ -90,6 +90,12 @@ const dersYetkili = (k: Kapsam, ders: string) => k.admin || k.dersSinif.has(basN
 const sinifYetkili = (k: Kapsam, ders: string, sinif: string) => k.admin || !!k.dersSinif.get(basNorm(ders))?.has(sinif);
 /** Öğrencinin sınavdaki sınıfı, kapsamdaki derslerden en az birinde yetkili mi */
 const ogrenciYetkili = (k: Kapsam, s: Sinav, sinif: string) => k.admin || s.dersler.some(d => sinifYetkili(k, d.ders, sinif));
+/** Sınav giriş belgesi (sinav-yeri.ts) için: sınav ve dersin yetkisi. */
+export async function dsDersYetkisi(db: Db, kod: string, ders: string) {
+  const k = await kapsam(db);
+  const s = await sinavBul(db, kod);
+  return { s, d: dersGerekli(k, s, ders) };
+}
 function dersGerekli(k: Kapsam, s: Sinav, ders: string) {
   const d = s.dersler.find(x => x.ders === ders);
   if (!d) throw new KullaniciHatasi('Ders bulunamadı. Sayfayı yenileyin.');
@@ -101,12 +107,21 @@ function dersGerekli(k: Kapsam, s: Sinav, ders: string) {
 export async function dsDurum() {
   const db = vt();
   const k = await kapsam(db);
-  const [liste, siniflar, program] = await Promise.all([
+  const [liste, siniflar, program, belgeler, belgeSayi] = await Promise.all([
     sinavlar(db),
     db.select().from(schema.siniflar).orderBy(asc(schema.siniflar.anahtar)),
-    db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami)
+    db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami),
+    db.select().from(schema.sinavYeriListeleri).where(sql`${schema.sinavYeriListeleri.donemDers} <> ''`),
+    db.select({ liste: schema.sinavYeriKayitlari.listeKod, n: sql<number>`count(*)::int`, salon: sql<number>`count(distinct ${schema.sinavYeriKayitlari.salon})::int` })
+      .from(schema.sinavYeriKayitlari).groupBy(schema.sinavYeriKayitlari.listeKod)
   ]);
-  const derslik = new Map(siniflar.map(s => [s.ad, s.derslik]));
+  const zaman = (t: Date) => new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short' }).format(t);
+  const belge = (kod: string, ders: string) => {
+    const l = belgeler.find(b => b.donemKod === kod && b.donemDers === ders);
+    if (!l) return null;
+    const n = belgeSayi.find(b => b.liste === l.kod);
+    return { kod: l.kod, ogrenci: n?.n ?? 0, salon: n?.salon ?? 0, dosya: l.dosya, yukleme: zaman(l.yukleme), tarih: l.tarih, saat: l.saat, yer: l.yer };
+  };
   // Öğretim elemanı yalnızca kendi derslerinin bulunduğu (arşivde olmayan) sınavları görür
   const gorunen = k.admin ? liste : liste.filter(x => !x.arsiv && x.dersler.some(d => dersYetkili(k, d.ders)));
   return {
@@ -117,7 +132,6 @@ export async function dsDurum() {
     sinavlar: gorunen.map(x => ({
       kod: x.kod, ad: x.ad, siniflar: x.siniflar, arsiv: x.arsiv,
       ogrenci: x.ogrenciler.filter(o => ogrenciYetkili(k, x, o.sinif)).length,
-      yerler: x.siniflar.filter(s => ogrenciYetkili(k, x, s)).map(s => ({ sinif: s, derslik: derslik.get(s) ?? '', ozel: x.yerler[s] ?? '' })),
       dersler: x.dersler.filter(d => dersYetkili(k, d.ders)).map(d => {
         const ogr = x.ogrenciler.filter(o => sinifYetkili(k, d.ders, o.sinif));
         const tum = ogr.map(o => o.p[d.ders] ?? '');
@@ -126,7 +140,7 @@ export async function dsDurum() {
           const sayi = v.map(p => puanOku(p)).filter((p): p is number => typeof p === 'number');
           return { sinif: sn, n: v.length, girilen: sayi.length, ort: dsOrtalama(v, 1), min: sayi.length ? Math.min(...sayi) : null, max: sayi.length ? Math.max(...sayi) : null };
         });
-        return { ders: d.ders, tarih: d.tarih, saat: d.saat, tarihYayinda: d.tarihYayinda, yerYayinda: d.yerYayinda, sonucYayinda: d.sonucYayinda, n: tum.length,
+        return { ders: d.ders, tarih: d.tarih, saat: d.saat, tarihYayinda: d.tarihYayinda, yerYayinda: d.yerYayinda, sonucYayinda: d.sonucYayinda, belge: belge(x.kod, d.ders), n: tum.length,
           girilen: tum.filter(p => typeof puanOku(p) === 'number').length, girmedi: tum.filter(p => p === 'G').length, bos: tum.filter(p => p === '').length,
           ort: dsOrtalama(tum, 1), sinif: siniflarIc };
       })
@@ -223,26 +237,10 @@ export async function dsDersTarih(kod: string, ders: string, tarih: string, saat
   return dsDurum();
 }
 
-/** Sınıf bazında sınav yeri (boş = sınıfın dersliği). Öğretim elemanı yalnızca kendi sınıflarınınkini değiştirir. */
-export async function dsYerKaydet(kod: string, yerler: Record<string, string>) {
-  const db = vt();
-  const k = await kapsam(db);
-  await db.transaction(async tx => {
-    const s = await sinavBul(tx, kod);
-    const izinli = s.siniflar.filter(sn => ogrenciYetkili(k, s, sn));
-    if (!izinli.length) throw new KullaniciHatasi('Bu sınavda sınav yerini değiştirebileceğiniz bir sınıf yok.');
-    await tx.delete(schema.donemSinavYerleri).where(and(eq(schema.donemSinavYerleri.sinavKod, s.kod), inArray(schema.donemSinavYerleri.sinif, izinli)));
-    const satirlar = izinli.map(sn => ({ sinavKod: s.kod, sinif: sn, yer: String(yerler?.[sn] ?? '').trim().replace(/\s+/g, ' ').slice(0, 60) })).filter(r => r.yer);
-    if (satirlar.length) await tx.insert(schema.donemSinavYerleri).values(satirlar);
-  });
-  await islemKaydet('Dönem sınavı', `${kod} sınav yerleri kaydedildi`);
-  return dsDurum();
-}
-
 export type DsYayinAlani = 'tarih' | 'yer' | 'sonuc';
-const YAYIN_ADI: Record<DsYayinAlani, string> = { tarih: 'sınav tarihi', yer: 'sınav yeri', sonuc: 'puanları' };
+const YAYIN_ADI: Record<DsYayinAlani, string> = { tarih: 'sınav tarihi', yer: 'sınav giriş belgesi', sonuc: 'puanları' };
 /**
- * Ders bazında yayın, sırayla: tarih → sınav yeri → puanlar. Bir aşama ancak öncekinden sonra açılır;
+ * Ders bazında yayın, sırayla: tarih → sınav giriş belgesi (kelebek listesi: salon ve sıra) → puanlar. Bir aşama ancak öncekinden sonra açılır;
  * puanlar en az bir puan girilmeden yayınlanamaz. Bir aşama gizlenince sonrakiler de gizlenir.
  */
 export async function dsYayin(kod: string, alan: DsYayinAlani, ders: string, ac: boolean) {
@@ -251,12 +249,15 @@ export async function dsYayin(kod: string, alan: DsYayinAlani, ders: string, ac:
   const s = await sinavBul(db, kod);
   if (!(alan in YAYIN_ADI)) throw new KullaniciHatasi('Geçersiz işlem.');
   const d = dersGerekli(k, s, ders);
+  const [belge] = await db.select({ kod: schema.sinavYeriListeleri.kod }).from(schema.sinavYeriListeleri)
+    .where(and(eq(schema.sinavYeriListeleri.donemKod, s.kod), eq(schema.sinavYeriListeleri.donemDers, d.ders)));
   let set: Partial<typeof schema.donemSinavDersleri.$inferInsert>;
   if (ac) {
     if (alan === 'tarih' && !d.tarih) throw new KullaniciHatasi(`Önce "${d.ders}" için sınav tarihini girin.`);
-    if (alan === 'yer' && !d.tarihYayinda) throw new KullaniciHatasi('Önce sınav tarihini yayınlayın; sınav yeri ondan sonra açıklanır.');
+    if (alan === 'yer' && !d.tarihYayinda) throw new KullaniciHatasi('Önce sınav tarihini yayınlayın; sınav giriş belgesi ondan sonra duyurulur.');
+    if (alan === 'yer' && !belge) throw new KullaniciHatasi(`Önce "${d.ders}" için sınav giriş belgesini (kelebek listesi) yükleyin.`);
     if (alan === 'sonuc') {
-      if (!d.yerYayinda) throw new KullaniciHatasi('Önce sınav yerini yayınlayın; puanlar en son açıklanır.');
+      if (!d.yerYayinda) throw new KullaniciHatasi('Önce sınav giriş belgesini yayınlayın; puanlar en son açıklanır.');
       if (!s.ogrenciler.some(o => o.p[d.ders])) throw new KullaniciHatasi(`"${d.ders}" için hiç puan girilmemiş. Puanları girdikten sonra yayınlayın.`);
     }
     set = alan === 'tarih' ? { tarihYayinda: true } : alan === 'yer' ? { yerYayinda: true } : { sonucYayinda: true };
@@ -264,6 +265,8 @@ export async function dsYayin(kod: string, alan: DsYayinAlani, ders: string, ac:
     set = alan === 'tarih' ? { tarihYayinda: false, yerYayinda: false, sonucYayinda: false } : alan === 'yer' ? { yerYayinda: false, sonucYayinda: false } : { sonucYayinda: false };
   }
   await db.update(schema.donemSinavDersleri).set(set).where(and(eq(schema.donemSinavDersleri.sinavKod, s.kod), eq(schema.donemSinavDersleri.ders, d.ders)));
+  // Sınav giriş belgesinin (kelebek listesi) görünürlüğü 2. aşamaya bağlıdır
+  if (belge && set.yerYayinda !== undefined) await db.update(schema.sinavYeriListeleri).set({ yayinda: set.yerYayinda }).where(eq(schema.sinavYeriListeleri.kod, belge.kod));
   await islemKaydet('Dönem sınavı', `${s.kod} ${d.ders} ${YAYIN_ADI[alan]} ${ac ? 'yayınlandı' : 'gizlendi'}`);
   return dsDurum();
 }
@@ -416,11 +419,10 @@ export type DsOgrenciSinavi = { kod: string; ad: string; sinif: string; yerYayin
  * Öğrencinin sınavları, ders bazında yayın sırasıyla: tarihi yayınlanan dersler görünür; yeri yalnızca sınav yeri
  * yayınlandıysa, "sonuç açıklandı" yalnızca puanlar yayınlandıysa.
  */
-export async function dsOgrenciBilgi(db: Db, no: string, bagliYer: (donemKod: string) => string): Promise<{ sinavlar: DsOgrenciSinavi[]; sonucVar: boolean } | null> {
+export async function dsOgrenciBilgi(db: Db, no: string, bagliYer: (donemKod: string, ders: string) => string): Promise<{ sinavlar: DsOgrenciSinavi[]; sonucVar: boolean } | null> {
   const kayitlar = await db.select({ kod: schema.donemSinavOgrencileri.sinavKod }).from(schema.donemSinavOgrencileri).where(eq(schema.donemSinavOgrencileri.no, no));
   if (!kayitlar.length) return null;
-  const [liste, siniflar] = await Promise.all([sinavlar(db, kayitlar.map(k => k.kod)), db.select({ ad: schema.siniflar.ad, derslik: schema.siniflar.derslik }).from(schema.siniflar)]);
-  const derslik = new Map(siniflar.map(s => [s.ad, s.derslik]));
+  const liste = await sinavlar(db, kayitlar.map(k => k.kod));
   const bugun = bugunGun();
   let sonucVar = false;
   const out: DsOgrenciSinavi[] = [];
@@ -431,9 +433,8 @@ export async function dsOgrenciBilgi(db: Db, no: string, bagliYer: (donemKod: st
     if (!gorunen.length) continue;
     const buSonuc = gorunen.some(d => d.sonucYayinda);
     if (buSonuc) sonucVar = true;
-    const yer = bagliYer(s.kod) || s.yerler[o.sinif] || derslik.get(o.sinif) || '';
     out.push({ kod: s.kod, ad: s.ad, sinif: o.sinif, yerYayinda: gorunen.some(d => d.yerYayinda), sonucVar: buSonuc,
-      dersler: gorunen.map(d => { const t = trGun(d.tarih); return { ders: d.ders, tarih: d.tarih, saat: d.saat, yer: d.yerYayinda ? yer : '', yerAcik: d.yerYayinda, gecti: t != null && t < bugun }; }) });
+      dersler: gorunen.map(d => { const t = trGun(d.tarih); return { ders: d.ders, tarih: d.tarih, saat: d.saat, yer: d.yerYayinda ? bagliYer(s.kod, d.ders) : '', yerAcik: d.yerYayinda, gecti: t != null && t < bugun }; }) });
   }
   return { sinavlar: out, sonucVar };
 }

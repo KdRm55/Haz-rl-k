@@ -77,10 +77,11 @@ export async function dsDurumIslemi() { return sar(() => ds.dsDurum()); }
 export async function dsOlusturIslemi(v: Parameters<typeof ds.dsSinavOlustur>[0]) { return sar(() => ds.dsSinavOlustur(v)); }
 export async function dsGuncelleIslemi(v: Parameters<typeof ds.dsSinavGuncelle>[0]) { return sar(() => ds.dsSinavGuncelle(v)); }
 export async function dsOgrenciGuncelleIslemi(kod: string) { return sar(() => ds.dsOgrenciGuncelle(kod)); }
-export async function dsYerKaydetIslemi(kod: string, yerler: Record<string, string>) { return sar(() => ds.dsYerKaydet(kod, yerler)); }
 // Dönem sınavı ders işlemleri hoca ekranından da çağrılır; yetki kapsamı donem-sinav.ts'de denetlenir
 export async function dsYayinIslemi(kod: string, alan: ds.DsYayinAlani, ders: string, ac: boolean) { return sar(() => ds.dsYayin(kod, alan, ders, ac)); }
 export async function dsDersTarihIslemi(kod: string, ders: string, tarih: string, saat: string) { return sar(() => ds.dsDersTarih(kod, ders, tarih, saat)); }
+export async function dsBelgeOnizleIslemi(kod: string, ders: string, satirlar: string[][]) { return sar(() => sye.dsBelgeOnizle(kod, ders, satirlar)); }
+export async function dsBelgeKaydetIslemi(kod: string, ders: string, satirlar: string[][], dosyaAdi: string) { return sar(() => sye.dsBelgeKaydet(kod, ders, satirlar, dosyaAdi)); }
 export async function dsArsivIslemi(kod: string, arsiv: boolean) { return sar(() => ds.dsArsiv(kod, arsiv)); }
 export async function dsPuanTablosuIslemi(kod: string) { return sar(() => ds.dsPuanTablosu(kod)); }
 export async function dsPuanKaydetIslemi(kod: string, d: { no: string; ders: string; puan: string }[]) { return sar(() => ds.dsPuanKaydet(kod, d)); }
