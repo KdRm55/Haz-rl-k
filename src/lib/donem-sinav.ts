@@ -64,13 +64,11 @@ async function aktifSinifUyeleri(db: Db, adlar: string[]) {
 export async function dsDurum() {
   await yonetici();
   const db = vt();
-  const [liste, siniflar, program, ogr] = await Promise.all([
+  const [liste, siniflar, program] = await Promise.all([
     sinavlar(db),
     db.select().from(schema.siniflar).orderBy(asc(schema.siniflar.anahtar)),
-    db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami),
-    db.select({ no: schema.ogrenciler.no, tc4: schema.ogrenciler.tc4 }).from(schema.ogrenciler)
+    db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami)
   ]);
-  const tc = new Map(ogr.map(o => [o.no, o.tc4]));
   const derslik = new Map(siniflar.map(s => [s.ad, s.derslik]));
   return {
     esik: DS_ORT_ESIK,
@@ -78,7 +76,6 @@ export async function dsDurum() {
     dersOneri: [...new Set(program.map(p => p.ders).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')),
     sinavlar: liste.map(x => ({
       kod: x.kod, ad: x.ad, siniflar: x.siniflar, yerYayinda: x.yerYayinda, arsiv: x.arsiv, ogrenci: x.ogrenciler.length,
-      tcEksik: x.ogrenciler.filter(o => !tc.get(o.no)).length,
       yerler: x.siniflar.map(s => ({ sinif: s, derslik: derslik.get(s) ?? '', ozel: x.yerler[s] ?? '' })),
       dersler: x.dersler.map(d => {
         const tum = x.ogrenciler.map(o => o.p[d.ders] ?? '');
@@ -322,13 +319,10 @@ export async function dsPuanUygula(veri: DsPuanVerisi) {
 
 /* ---------- Sistem kontrolü ---------- */
 export async function dsKontrol(db: Db, ekle: (seviye: 'hata' | 'uyari' | 'bilgi', konu: string, ayrinti: string) => void) {
-  const [liste, ogr] = await Promise.all([sinavlar(db), db.select({ no: schema.ogrenciler.no, tc4: schema.ogrenciler.tc4 }).from(schema.ogrenciler)]);
-  const tc = new Map(ogr.map(o => [o.no, o.tc4]));
+  const liste = await sinavlar(db);
   for (const s of liste.filter(x => !x.arsiv)) {
     const konu = `Dönem sınavı ${s.kod} (${s.ad})`;
     if (!s.ogrenciler.length) ekle('uyari', konu, 'Sınavda hiç öğrenci yok. "Öğrenci listesini güncelle"ye basın.');
-    const tcEksik = s.ogrenciler.filter(o => !tc.get(o.no)).length;
-    if (tcEksik && s.dersler.some(d => d.sonucYayinda)) ekle('uyari', konu, `${tcEksik} öğrencinin TC son 4 hanesi yok; sonuçlarını göremezler.`);
   }
 }
 

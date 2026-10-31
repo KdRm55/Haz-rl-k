@@ -66,6 +66,20 @@ function SinavKarti({ x, setVeri, mesaj, duzenle }: { x: Sinav; setVeri: (d: DsD
     setBekliyor(false);
     if (r.ok) { setVeri(r.veri); mesaj({ metin: basari }); } else mesaj({ metin: r.hata, hata: true });
   }
+  // Kartın yayın çubuğu: bütün derslerin puanlarını tek seferde açar ya da kapatır
+  async function tumunu(ac: boolean) {
+    const hedef = x.dersler.filter(d => d.sonucYayinda !== ac);
+    const bos = hedef.reduce((t, d) => t + d.bos, 0);
+    if (!confirm(ac ? `${x.ad} · ${hedef.map(d => d.ders).join(', ')} puanları öğrencilere yayınlansın mı?` + (bos ? `\n\nDİKKAT: ${bos} puan henüz girilmemiş; bu öğrenciler "Girilmedi" görür.` : '')
+      : `${x.ad} puanları öğrencilerden gizlensin mi?`)) return;
+    setBekliyor(true);
+    let son: Sonuc<DsDurum> | null = null;
+    for (const d of hedef) { son = await cagir(dsYayinIslemi(x.kod, 'sonuc', d.ders, ac)); if (!son.ok) break; }
+    setBekliyor(false);
+    if (!son) return;
+    if (son.ok) { setVeri(son.veri); mesaj({ metin: ac ? 'Puanlar yayınlandı. Öğrenciler kendi hesaplarından görebilir.' : 'Puanlar öğrencilerden gizlendi.' }); }
+    else mesaj({ metin: son.hata, hata: true });
+  }
   const sinifSatir = x.dersler.flatMap(d => d.sinif.map(c => [d.ders, c.sinif, `${c.girilen} / ${c.n}`, puanTr(c.ort), c.min == null ? '—' : `${puanTr(c.min)} – ${puanTr(c.max)}`]));
 
   return (
@@ -73,29 +87,36 @@ function SinavKarti({ x, setVeri, mesaj, duzenle }: { x: Sinav; setVeri: (d: DsD
       <div className="ds-k-ust">
         <div>
           <div className="ds-k-ad">{x.ad}<span className="kod">{x.kod}</span></div>
-          <div className="ds-k-meta">{x.siniflar.join(', ')} · {x.ogrenci} öğrenci{x.tcEksik > 0 && <> · <span style={{ color: 'var(--warn)' }}>{x.tcEksik} öğrencinin TC son 4 hanesi yok</span></>}</div>
+          <div className="ds-k-meta">{x.siniflar.join(', ')} · {x.ogrenci} öğrenci</div>
         </div>
         <div className="dosya-satir" style={{ gap: 6 }}>
           {x.arsiv && <span className="ds-cip">Arşivde</span>}
           <span className={'ds-cip' + (x.yerYayinda ? ' acik' : '')}>Sınav yerleri {x.yerYayinda ? 'yayında' : 'gizli'}</span>
-          <span className={'ds-cip' + (sonucAcik ? ' acik' : '')}>Sonuç: {sonucAcik} / {x.dersler.length} ders yayında</span>
+          <span className={'ds-cip' + (sonucAcik ? ' acik' : '')}>Puanlar: {sonucAcik} / {x.dersler.length} ders yayında</span>
         </div>
       </div>
       <div className="table-card"><div className="scroller"><table>
-        <thead><tr><th>Ders</th><th>Tarih · Saat</th><th>Girilen</th><th>Girmedi</th><th>Boş</th><th>Ortalama</th><th>Sonuç</th></tr></thead>
+        <thead><tr><th>Ders</th><th>Tarih · Saat</th><th>Girilen</th><th>Girmedi</th><th>Boş</th><th>Ortalama</th><th>Puanlar</th></tr></thead>
         <tbody>{x.dersler.map(d => (
           <tr key={d.ders}>
             <td><strong>{d.ders}</strong></td><td>{[d.tarih, d.saat].filter(Boolean).join(' · ') || '—'}</td>
             <td className="no">{d.girilen} / {d.n}</td><td className="no">{d.girmedi}</td><td className="no">{d.bos}</td><td className="no">{puanTr(d.ort)}</td>
             <td><button type="button" className={'btn btn-kucuk ' + (d.sonucYayinda ? 'btn-secondary' : 'btn-primary')} disabled={bekliyor} onClick={() => d.sonucYayinda
               ? calis(dsYayinIslemi(x.kod, 'sonuc', d.ders, false), `${d.ders} sonuçları öğrencilerden gizlendi.`)
-              : calis(dsYayinIslemi(x.kod, 'sonuc', d.ders, true), `${d.ders} sonuçları yayınlandı. Öğrenciler TC son 4 haneleriyle görebilir.`,
-                `${x.ad} · ${d.ders} sonuçları yayınlansın mı?\n\nGirilen: ${d.girilen} / ${d.n}, girmedi: ${d.girmedi}, boş: ${d.bos}` +
-                (d.bos ? `\n\nDİKKAT: ${d.bos} öğrencinin puanı henüz girilmemiş; bu öğrenciler "Girilmedi" görür.` : '') + (x.tcEksik ? `\n${x.tcEksik} öğrencinin TC son 4 hanesi olmadığı için sonucunu göremez.` : ''))}>
+              : calis(dsYayinIslemi(x.kod, 'sonuc', d.ders, true), `${d.ders} puanları yayınlandı. Öğrenciler kendi hesaplarından görebilir.`,
+                `${x.ad} · ${d.ders} puanları öğrencilere yayınlansın mı?\n\nGirilen: ${d.girilen} / ${d.n}, girmedi: ${d.girmedi}, boş: ${d.bos}` +
+                (d.bos ? `\n\nDİKKAT: ${d.bos} öğrencinin puanı henüz girilmemiş; bu öğrenciler "Girilmedi" görür.` : ''))}>
               {d.sonucYayinda ? 'Gizle' : 'Yayınla'}</button></td>
           </tr>
         ))}</tbody>
       </table></div></div>
+      <div className={'ds-yayin' + (sonucAcik === x.dersler.length && sonucAcik ? ' acik' : '')}>
+        <span>{!sonucAcik ? 'Puanlar öğrencilere kapalı. Yayınlamadan hiçbir öğrenci puanını göremez.'
+          : sonucAcik < x.dersler.length ? `${sonucAcik} dersin puanları öğrencilere açık; diğerleri kapalı.` : 'Bütün derslerin puanları öğrencilere açık.'}</span>
+        {sonucAcik < x.dersler.length
+          ? <button type="button" className="btn btn-primary btn-kucuk" disabled={bekliyor} onClick={() => tumunu(true)}>{x.dersler.length > 1 ? 'Tüm puanları yayınla' : 'Puanları yayınla'}</button>
+          : <button type="button" className="btn btn-secondary btn-kucuk" disabled={bekliyor} onClick={() => tumunu(false)}>Puanları gizle</button>}
+      </div>
       <ListeTablosu baslik="Sınıf ortalamaları" sayi={sinifSatir.length} kolonlar={['Ders', 'Sınıf', 'Girilen', 'Ortalama', 'En düşük – en yüksek']} satirlar={sinifSatir} />
       <div className="ds-alt-bolum">
         <h4>Sınav yerleri</h4>
@@ -158,7 +179,7 @@ export function DonemSekmesi() {
             <button className="btn btn-primary" type="button" onClick={() => setForm({ x: null })}>+ Yeni sınav</button>
           </div>
         </div>
-        <p className="aciklama">Yıl içi sınavlar. Her dersin tarihi, saati ve puanı ayrıdır. Öğrenciler sınava kendi dersliklerinde girer (bir sınav için sınıf bazında değiştirilebilir). Sınav yerleri sınav bazında, sonuçlar <strong>ders ders</strong> yayınlanır; öğrenci sonucunu TC kimlik numarasının son 4 hanesiyle görür. Sınıf ortalaması en az {d.esik} puan girilmişse gösterilir.</p>
+        <p className="aciklama">Yıl içi sınavlar. Her dersin tarihi, saati ve puanı ayrıdır. Öğrenciler sınava kendi dersliklerinde girer (bir sınav için sınıf bazında değiştirilebilir). Sınav yerleri sınav bazında, puanlar <strong>ders ders</strong> ya da &quot;Tüm puanları yayınla&quot; ile birlikte yayınlanır. Yayınlanmayan puanları hiçbir öğrenci göremez; yayınlananları öğrenci kendi hesabından görür. Sınıf ortalaması en az {d.esik} puan girilmişse gösterilir.</p>
         {form && <SinavFormu d={d} x={form.x} kapat={() => setForm(null)} kaydet={kaydet} />}
       </div>
       <Mesaj m={mesaj} />
