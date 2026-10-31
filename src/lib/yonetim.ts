@@ -314,11 +314,15 @@ export type ProgramGirdisi = { hoca: string; ders: string; gun: string; saat: st
 
 export async function programListesi() {
   await yonetici();
-  const [p, siniflar] = await Promise.all([
+  const [p, sinifKayit] = await Promise.all([
     vt().select().from(schema.hocaProgrami).orderBy(asc(schema.hocaProgrami.sira), asc(schema.hocaProgrami.id)),
-    aktifSinifAdlari()
+    vt().select({ ad: schema.siniflar.ad, derslik: schema.siniflar.derslik }).from(schema.siniflar).where(eq(schema.siniflar.aktif, true)).orderBy(asc(schema.siniflar.anahtar))
   ]);
-  return { satirlar: p.map(({ hoca, ders, gun, saat, sube, derslik }) => ({ hoca, ders, gun, saat, sube, derslik })), siniflar };
+  return {
+    satirlar: p.map(({ hoca, ders, gun, saat, sube, derslik }) => ({ hoca, ders, gun, saat, sube, derslik })),
+    siniflar: sinifKayit.map(s => s.ad),
+    derslikler: Object.fromEntries(sinifKayit.map(s => [s.ad, s.derslik])) as Record<string, string>   // görünüm: sınıfın varsayılan dersliği
+  };
 }
 
 /** Programın tamamı tek işlemde değiştirilir (tablo düzenleme ve Excel'den yükleme ortak). */

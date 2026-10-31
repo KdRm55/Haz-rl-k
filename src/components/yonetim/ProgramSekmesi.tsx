@@ -6,6 +6,7 @@ import { csvIndir, dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import { basNorm, sinifAnahtari, subeEslestir, TR_GUN_SIRA } from '@/lib/metin';
 import { programTablosuOku, type ProgramSatiri } from '@/lib/program-kurallari';
 import { Mesaj, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
+import { ProgramGorunumu } from './ProgramGorunumu';
 
 const GUNLER = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 const bosSatir: ProgramSatiri = { hoca: '', ders: '', gun: 'Pazartesi', saat: '', sube: '', derslik: '' };
@@ -18,6 +19,7 @@ export function ProgramSekmesi() {
   const [mesaj, setMesaj] = useState<MesajDurumu>(null);
   const [bekliyor, setBekliyor] = useState(false);
   const [ara, setAra] = useState('');
+  const [gorunum, setGorunum] = useState<'duzen' | 'sinif' | 'hoca'>('duzen');
   useEffect(() => { if (veri) setSatirlar(veri.satirlar); }, [veri]);
 
   const degisti = useMemo(() => !!veri && JSON.stringify(veri.satirlar) !== JSON.stringify(satirlar), [veri, satirlar]);
@@ -50,10 +52,30 @@ export function ProgramSekmesi() {
   if (hata) return <div className="hata-kutu">{hata}</div>;
   if (!veri) return <Yukleniyor />;
   const aktifSiniflar = veri.siniflar.map(ad => ({ ad, anahtar: sinifAnahtari(ad) }));
+  const secici = (
+    <div className="prg-gorunum" role="tablist" aria-label="Ders programı görünümü">
+      {([['duzen', 'Düzenle'], ['sinif', 'Sınıf programları'], ['hoca', 'Hoca programları']] as const).map(([k, et]) => (
+        <button key={k} type="button" role="tab" aria-selected={gorunum === k} className={gorunum === k ? 'secili' : undefined} onClick={() => setGorunum(k)}>{et}</button>
+      ))}
+    </div>
+  );
+  if (gorunum !== 'duzen') {
+    return (
+      <section>
+        <div className="adim">
+          <div className="bolum-baslik">Ders programı</div>
+          {secici}
+          {degisti && <div className="uyari-metin" style={{ marginBottom: 10 }}>Kaydedilmemiş değişiklikleriniz var; görünüm kaydedilmiş programı gösteriyor.</div>}
+          <ProgramGorunumu veri={veri} tur={gorunum} />
+        </div>
+      </section>
+    );
+  }
   return (
     <section>
       <div className="adim">
         <div className="bolum-baslik">Ders programı</div>
+        {secici}
         <p className="aciklama">Her satır bir ders saatidir. Şube, sınıf adıyla (&quot;Hazırlık A&quot;) ya da kısaca (&quot;A&quot;) yazılabilir. Programı Excel&apos;den de yükleyebilirsiniz: &quot;Şablon indir&quot; ekrandaki programı Excel olarak verir (program boşsa yalnızca başlıklar); düzenleyip &quot;Excel&apos;den yükle&quot; ile geri yükleyin (sütunlar: Hoca Adı, Ders, Gün, Saat, Şube, Derslik). Değişiklikler &quot;Programı kaydet&quot;e basınca geçerli olur.</p>
         <div className="actions">
           <button className="btn btn-primary" type="button" onClick={kaydet} disabled={!degisti || bekliyor}>{bekliyor ? 'Kaydediliyor…' : 'Programı kaydet'}</button>
