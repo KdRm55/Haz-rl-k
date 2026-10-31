@@ -8,9 +8,17 @@ export function Devamsizlik({ d }: { d: DevamsizlikOzeti | null | undefined }) {
   if (!d?.dersler.length) return <><div className="bl-baslik">Devamsızlığım</div><div className="bl-bos">Henüz yoklaması girilen bir dersin yok. Yoklamalar girildikçe burada göreceksin.</div></>;
   // sınırı aşan ve yaklaşan dersler önce
   const dersler = d.dersler.slice().sort((a, b) => (AGIRLIK[a.durum] ?? 2) - (AGIRLIK[b.durum] ?? 2) || a.ders.localeCompare(b.ders, 'tr'));
+  const toplam = d.dersler.reduce((t, x) => t + x.yokSaat, 0);
+  const asan = d.dersler.filter(x => x.durum === 'asti').length, yakin = d.dersler.filter(x => x.durum === 'yakin').length;
+  const ozetDurum = asan ? 'asti' : yakin ? 'yakin' : '';
   return (
     <>
       <div className="bl-baslik">Devamsızlığım</div>
+      <div className={'dv-ozet' + (ozetDurum ? ' ' + ozetDurum : '')}>
+        <div className="dv-halka"><b>{toplam}</b><span>saat</span></div>
+        <div><div className="dv-ozet-baslik">Toplam {toplam} saat devamsızlık</div>
+          <div className="dv-ozet-alt">{asan ? `${asan} derste sınırı aştın` : yakin ? `${yakin} derste sınıra yaklaştın` : toplam ? 'Bütün derslerde sınırın altındasın' : 'Tam katılım, böyle devam'}</div></div>
+      </div>
       <div className="dv-ust">Son işlenen yoklama: <b>{d.sonTarih || '-'}</b>
         {d.sinirVar && <> · Devamsızlık sınırı her ders için ders saatinin %{String(d.sinirYuzde).replace('.', ',')}’idir.</>}
         <br />Yalnızca yoklaması girilen dersler sayılır; izinli olduğun saatler devamsızlığa eklenmez.</div>

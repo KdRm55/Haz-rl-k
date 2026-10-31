@@ -3,6 +3,7 @@ import { OgrenciEkrani, OgrenciGiris, OgrenciKvkk, OgrenciSifre } from '@/compon
 import { genelDuyurular, ogrenciAra } from '@/lib/ogrenci';
 import { oturum } from '@/lib/oturum';
 import type { Duyuru, SorguSonucu } from '@/lib/tipler';
+import { YAZI_TIPI } from '@/lib/yazdirma/ortak';
 
 // Duyurular ve öğrenci bilgileri her istekte güncel okunur.
 export const dynamic = 'force-dynamic';
@@ -24,5 +25,5 @@ export default async function OgrenciSayfasi() {
     sonuc = { bulundu: false, mesaj: 'Bilgilerin okunamadı. Birkaç saniye sonra sayfayı yenile.' };
   }
   if (!sonuc.bulundu) sonuc = { bulundu: false, mesaj: 'Öğrenci kaydın şu an sistemde bulunamadı. İdareye başvur.' };
-  return <OgrenciEkrani sonuc={sonuc} duyurular={duyurular} />;
+  return <><link rel="stylesheet" href={YAZI_TIPI} precedence="default" /><OgrenciEkrani sonuc={sonuc} duyurular={duyurular} /></>;
 }

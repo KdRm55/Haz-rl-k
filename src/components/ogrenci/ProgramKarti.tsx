@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { ProgramA4Stil, ProgramCiktiDugmeleri, useProgramCikti, YonSecici } from '@/components/ProgramA4';
 import type { ProgramSecenek } from '@/lib/yazdirma/program-a4';
 import type { ProgramSatiri } from '@/lib/tipler';
-import { bitisDakika, bugunAnahtar, dakika, GUN_ADI, GUN_KISA, GUN_SIRA, programDuzenle, trAnahtar } from './program';
+import { bugunAnahtar, GUN_ADI, GUN_KISA, GUN_SIRA, programDuzenle, trAnahtar } from './program';
 
 function Ders({ x, tek }: { x: ProgramSatiri; tek: string }) {
   return (
@@ -12,27 +12,6 @@ function Ders({ x, tek }: { x: ProgramSatiri; tek: string }) {
       <div className="dh-ad">{x.ders || 'Ders'}</div>
       {x.hoca && <div className="dh-hoca">{x.hoca}</div>}
       {x.derslik && x.derslik !== tek && <div className="dh-derslik">{x.derslik}</div>}
-    </div>
-  );
-}
-
-/** Sınıfım bölümündeki "Bugün" özeti. */
-export function BugunOzet({ program }: { program: ProgramSatiri[] }) {
-  if (!program.length) return null;
-  const bg = bugunAnahtar();
-  const bugunkiler = program.filter(x => trAnahtar(x.gun) === bg).sort((a, b) => dakika(a.saat) - dakika(b.saat));
-  if (!bugunkiler.length) {
-    return <div className="bugun"><strong>Bugün ({GUN_ADI[bg]}):</strong> <span className="yok">dersin yok.</span></div>;
-  }
-  const n = new Date(), simdi = n.getHours() * 60 + n.getMinutes();
-  const suan = bugunkiler.find(x => dakika(x.saat) <= simdi && simdi < bitisDakika(x.saat));
-  const sirada = bugunkiler.find(x => dakika(x.saat) > simdi);
-  return (
-    <div className="bugun">
-      <strong>Bugün ({GUN_ADI[bg]}):</strong> {bugunkiler.length} ders.
-      {suan && <><br />Şu an: <strong>{suan.saat}</strong> · {suan.ders || 'Ders'}</>}
-      {sirada && <><br />Sıradaki: <strong>{sirada.saat}</strong> · {sirada.ders || 'Ders'}</>}
-      {!suan && !sirada && <span className="yok"> Bugünkü derslerin bitti.</span>}
     </div>
   );
 }
