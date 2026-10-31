@@ -9,7 +9,7 @@ import {
   type DersGirdisi, type DsEslesme
 } from './donem-kurallari';
 import { KullaniciHatasi } from './hata';
-import { basNorm } from './metin';
+import { basNorm, subeEslestir } from './metin';
 import { dogrulamaEslesir } from './ogrenci-kurallari';
 import { islemKaydet, oturumGerekli, yetkiGerekli } from './oturum';
 import { puanMetni } from './puan-kurallari';
@@ -60,31 +60,73 @@ async function aktifSinifUyeleri(db: Db, adlar: string[]) {
   return secili.flatMap(s => ogr.filter(o => o.sinifId === s.id && /^\d+$/.test(o.no)).sort(alfabetik).map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi, sinif: s.ad })));
 }
 
+/* ---------- Yetki kapsamı ---------- */
+/**
+ * Yönetici bütün sınavları yönetir. Öğretim elemanı yalnızca ders programında verdiği derslerin sınavlarını,
+ * o dersi verdiği sınıflar için yönetir (tarih, sınav yeri, puan, yayın). Sınav oluşturma ve düzenleme yönetimdedir.
+ */
+type Kapsam = { admin: boolean; dersSinif: Map<string, Set<string>> };
+async function kapsam(db: Db): Promise<Kapsam> {
+  const ot = await oturumGerekli(['admin', 'hoca']);
+  if (ot.tur === 'admin') return { admin: true, dersSinif: new Map() };
+  const hn = basNorm(ot.hocaAdi);
+  if (!hn) throw new KullaniciHatasi('Hesabınız ders programındaki bir adla eşleştirilmemiş. Yöneticiden hesabınızı düzenlemesini isteyin.');
+  const [p, siniflar] = await Promise.all([
+    db.select({ hoca: schema.hocaProgrami.hoca, ders: schema.hocaProgrami.ders, sube: schema.hocaProgrami.sube }).from(schema.hocaProgrami),
+    db.select({ ad: schema.siniflar.ad, anahtar: schema.siniflar.anahtar }).from(schema.siniflar)
+  ]);
+  const dersSinif = new Map<string, Set<string>>();
+  for (const x of p) {
+    if (basNorm(x.hoca) !== hn) continue;
+    const s = subeEslestir(x.sube, siniflar);
+    if (!s) continue;
+    const k = basNorm(x.ders);
+    if (!dersSinif.has(k)) dersSinif.set(k, new Set());
+    dersSinif.get(k)!.add(s.ad);
+  }
+  return { admin: false, dersSinif };
+}
+const dersYetkili = (k: Kapsam, ders: string) => k.admin || k.dersSinif.has(basNorm(ders));
+const sinifYetkili = (k: Kapsam, ders: string, sinif: string) => k.admin || !!k.dersSinif.get(basNorm(ders))?.has(sinif);
+/** Öğrencinin sınavdaki sınıfı, kapsamdaki derslerden en az birinde yetkili mi */
+const ogrenciYetkili = (k: Kapsam, s: Sinav, sinif: string) => k.admin || s.dersler.some(d => sinifYetkili(k, d.ders, sinif));
+function dersGerekli(k: Kapsam, s: Sinav, ders: string) {
+  const d = s.dersler.find(x => x.ders === ders);
+  if (!d) throw new KullaniciHatasi('Ders bulunamadı. Sayfayı yenileyin.');
+  if (!dersYetkili(k, d.ders)) throw new KullaniciHatasi(`"${d.ders}" dersinin sınav işlemleri size ait değil.`);
+  return d;
+}
+
 /* ---------- Durum ---------- */
 export async function dsDurum() {
-  await yonetici();
   const db = vt();
+  const k = await kapsam(db);
   const [liste, siniflar, program] = await Promise.all([
     sinavlar(db),
     db.select().from(schema.siniflar).orderBy(asc(schema.siniflar.anahtar)),
     db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami)
   ]);
   const derslik = new Map(siniflar.map(s => [s.ad, s.derslik]));
+  // Öğretim elemanı yalnızca kendi derslerinin bulunduğu (arşivde olmayan) sınavları görür
+  const gorunen = k.admin ? liste : liste.filter(x => !x.arsiv && x.dersler.some(d => dersYetkili(k, d.ders)));
   return {
+    rol: (k.admin ? 'admin' : 'hoca') as 'admin' | 'hoca',
     esik: DS_ORT_ESIK,
     siniflar: siniflar.filter(s => s.aktif).map(s => s.ad),
     dersOneri: [...new Set(program.map(p => p.ders).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')),
-    sinavlar: liste.map(x => ({
-      kod: x.kod, ad: x.ad, siniflar: x.siniflar, yerYayinda: x.yerYayinda, arsiv: x.arsiv, ogrenci: x.ogrenciler.length,
-      yerler: x.siniflar.map(s => ({ sinif: s, derslik: derslik.get(s) ?? '', ozel: x.yerler[s] ?? '' })),
-      dersler: x.dersler.map(d => {
-        const tum = x.ogrenciler.map(o => o.p[d.ders] ?? '');
-        const siniflarIc = [...new Set(x.ogrenciler.map(o => o.sinif))].sort((a, b) => a.localeCompare(b, 'tr')).map(sn => {
-          const v = x.ogrenciler.filter(o => o.sinif === sn).map(o => o.p[d.ders] ?? '');
+    sinavlar: gorunen.map(x => ({
+      kod: x.kod, ad: x.ad, siniflar: x.siniflar, arsiv: x.arsiv,
+      ogrenci: x.ogrenciler.filter(o => ogrenciYetkili(k, x, o.sinif)).length,
+      yerler: x.siniflar.filter(s => ogrenciYetkili(k, x, s)).map(s => ({ sinif: s, derslik: derslik.get(s) ?? '', ozel: x.yerler[s] ?? '' })),
+      dersler: x.dersler.filter(d => dersYetkili(k, d.ders)).map(d => {
+        const ogr = x.ogrenciler.filter(o => sinifYetkili(k, d.ders, o.sinif));
+        const tum = ogr.map(o => o.p[d.ders] ?? '');
+        const siniflarIc = [...new Set(ogr.map(o => o.sinif))].sort((a, b) => a.localeCompare(b, 'tr')).map(sn => {
+          const v = ogr.filter(o => o.sinif === sn).map(o => o.p[d.ders] ?? '');
           const sayi = v.map(p => puanOku(p)).filter((p): p is number => typeof p === 'number');
           return { sinif: sn, n: v.length, girilen: sayi.length, ort: dsOrtalama(v, 1), min: sayi.length ? Math.min(...sayi) : null, max: sayi.length ? Math.max(...sayi) : null };
         });
-        return { ders: d.ders, tarih: d.tarih, saat: d.saat, sonucYayinda: d.sonucYayinda, n: tum.length,
+        return { ders: d.ders, tarih: d.tarih, saat: d.saat, tarihYayinda: d.tarihYayinda, yerYayinda: d.yerYayinda, sonucYayinda: d.sonucYayinda, n: tum.length,
           girilen: tum.filter(p => typeof puanOku(p) === 'number').length, girmedi: tum.filter(p => p === 'G').length, bos: tum.filter(p => p === '').length,
           ort: dsOrtalama(tum, 1), sinif: siniflarIc };
       })
@@ -93,7 +135,7 @@ export async function dsDurum() {
 }
 export type DsDurum = Awaited<ReturnType<typeof dsDurum>>;
 
-/* ---------- Tanım ---------- */
+/* ---------- Tanım (yalnızca yönetim) ---------- */
 export async function dsSinavOlustur(v: { ad?: string; siniflar?: string[]; dersler?: Partial<DersGirdisi>[] }) {
   await yonetici();
   const ad = String(v?.ad ?? '').trim().replace(/\s+/g, ' ');
@@ -133,10 +175,11 @@ export async function dsSinavGuncelle(v: { kod: string; ad?: string; dersler?: P
     await tx.update(schema.donemSinavlari).set({ ad }).where(eq(schema.donemSinavlari.kod, s.kod));
     const eski = new Map(s.dersler.map(d => [basNorm(d.ders), d]));
     await tx.delete(schema.donemSinavDersleri).where(eq(schema.donemSinavDersleri.sinavKod, s.kod));
-    // Var olan dersin adı (puanlara bağlı) korunur; yayın durumu da korunur
+    // Var olan dersin adı (puanlara bağlı) ve yayın durumları korunur
     await tx.insert(schema.donemSinavDersleri).values(dersler.map((d, i) => {
       const e = eski.get(basNorm(d.ders));
-      return { sinavKod: s.kod, ders: e?.ders ?? d.ders, tarih: d.tarih, saat: d.saat, sonucYayinda: e?.sonucYayinda ?? false, sira: i + 1 };
+      return { sinavKod: s.kod, ders: e?.ders ?? d.ders, tarih: d.tarih, saat: d.saat, tarihYayinda: e?.tarihYayinda ?? false,
+        yerYayinda: e?.yerYayinda ?? false, sonucYayinda: e?.sonucYayinda ?? false, sira: i + 1 };
     }));
   });
   await islemKaydet('Dönem sınavı', `${v.kod} güncellendi`);
@@ -166,33 +209,62 @@ export async function dsOgrenciGuncelle(kod: string) {
   return { ...r, durum: await dsDurum() };
 }
 
-/** Sınıf bazında sınav yeri (boş = sınıfın dersliği). */
+/* ---------- Ders işlemleri (yönetim ve dersin öğretim elemanı) ---------- */
+/** Bir dersin sınav tarihi ve saati. */
+export async function dsDersTarih(kod: string, ders: string, tarih: string, saat: string) {
+  const db = vt();
+  const k = await kapsam(db);
+  const s = await sinavBul(db, kod);
+  const d = dersGerekli(k, s, ders);
+  const [v] = dersleriDogrula([{ ders: d.ders, tarih, saat }]);
+  await db.update(schema.donemSinavDersleri).set({ tarih: v.tarih, saat: v.saat })
+    .where(and(eq(schema.donemSinavDersleri.sinavKod, s.kod), eq(schema.donemSinavDersleri.ders, d.ders)));
+  await islemKaydet('Dönem sınavı', `${s.kod} ${d.ders} tarihi: ${[v.tarih, v.saat].filter(Boolean).join(' ') || '(boş)'}`);
+  return dsDurum();
+}
+
+/** Sınıf bazında sınav yeri (boş = sınıfın dersliği). Öğretim elemanı yalnızca kendi sınıflarınınkini değiştirir. */
 export async function dsYerKaydet(kod: string, yerler: Record<string, string>) {
-  await yonetici();
-  await vt().transaction(async tx => {
+  const db = vt();
+  const k = await kapsam(db);
+  await db.transaction(async tx => {
     const s = await sinavBul(tx, kod);
-    await tx.delete(schema.donemSinavYerleri).where(eq(schema.donemSinavYerleri.sinavKod, s.kod));
-    const satirlar = s.siniflar.map(sn => ({ sinavKod: s.kod, sinif: sn, yer: String(yerler?.[sn] ?? '').trim().replace(/\s+/g, ' ').slice(0, 60) })).filter(r => r.yer);
+    const izinli = s.siniflar.filter(sn => ogrenciYetkili(k, s, sn));
+    if (!izinli.length) throw new KullaniciHatasi('Bu sınavda sınav yerini değiştirebileceğiniz bir sınıf yok.');
+    await tx.delete(schema.donemSinavYerleri).where(and(eq(schema.donemSinavYerleri.sinavKod, s.kod), inArray(schema.donemSinavYerleri.sinif, izinli)));
+    const satirlar = izinli.map(sn => ({ sinavKod: s.kod, sinif: sn, yer: String(yerler?.[sn] ?? '').trim().replace(/\s+/g, ' ').slice(0, 60) })).filter(r => r.yer);
     if (satirlar.length) await tx.insert(schema.donemSinavYerleri).values(satirlar);
   });
   await islemKaydet('Dönem sınavı', `${kod} sınav yerleri kaydedildi`);
   return dsDurum();
 }
 
-/** alan 'yer': sınav bazında; 'sonuc': ders bazında yayın. */
-export async function dsYayin(kod: string, alan: 'yer' | 'sonuc', ders: string | null, ac: boolean) {
-  await yonetici();
+export type DsYayinAlani = 'tarih' | 'yer' | 'sonuc';
+const YAYIN_ADI: Record<DsYayinAlani, string> = { tarih: 'sınav tarihi', yer: 'sınav yeri', sonuc: 'puanları' };
+/**
+ * Ders bazında yayın, sırayla: tarih → sınav yeri → puanlar. Bir aşama ancak öncekinden sonra açılır;
+ * puanlar en az bir puan girilmeden yayınlanamaz. Bir aşama gizlenince sonrakiler de gizlenir.
+ */
+export async function dsYayin(kod: string, alan: DsYayinAlani, ders: string, ac: boolean) {
   const db = vt();
+  const k = await kapsam(db);
   const s = await sinavBul(db, kod);
-  if (alan === 'yer') {
-    await db.update(schema.donemSinavlari).set({ yerYayinda: !!ac }).where(eq(schema.donemSinavlari.kod, s.kod));
-    await islemKaydet('Dönem sınavı', `${s.kod} sınav yerleri ${ac ? 'yayınlandı' : 'gizlendi'}`);
-  } else if (alan === 'sonuc') {
-    const d = s.dersler.find(x => x.ders === ders);
-    if (!d) throw new KullaniciHatasi('Ders bulunamadı.');
-    await db.update(schema.donemSinavDersleri).set({ sonucYayinda: !!ac }).where(and(eq(schema.donemSinavDersleri.sinavKod, s.kod), eq(schema.donemSinavDersleri.ders, d.ders)));
-    await islemKaydet('Dönem sınavı', `${s.kod} ${d.ders} sonuçları ${ac ? 'yayınlandı' : 'gizlendi'}`);
-  } else throw new KullaniciHatasi('Geçersiz işlem.');
+  if (!(alan in YAYIN_ADI)) throw new KullaniciHatasi('Geçersiz işlem.');
+  const d = dersGerekli(k, s, ders);
+  let set: Partial<typeof schema.donemSinavDersleri.$inferInsert>;
+  if (ac) {
+    if (alan === 'tarih' && !d.tarih) throw new KullaniciHatasi(`Önce "${d.ders}" için sınav tarihini girin.`);
+    if (alan === 'yer' && !d.tarihYayinda) throw new KullaniciHatasi('Önce sınav tarihini yayınlayın; sınav yeri ondan sonra açıklanır.');
+    if (alan === 'sonuc') {
+      if (!d.yerYayinda) throw new KullaniciHatasi('Önce sınav yerini yayınlayın; puanlar en son açıklanır.');
+      if (!s.ogrenciler.some(o => o.p[d.ders])) throw new KullaniciHatasi(`"${d.ders}" için hiç puan girilmemiş. Puanları girdikten sonra yayınlayın.`);
+    }
+    set = alan === 'tarih' ? { tarihYayinda: true } : alan === 'yer' ? { yerYayinda: true } : { sonucYayinda: true };
+  } else {
+    set = alan === 'tarih' ? { tarihYayinda: false, yerYayinda: false, sonucYayinda: false } : alan === 'yer' ? { yerYayinda: false, sonucYayinda: false } : { sonucYayinda: false };
+  }
+  await db.update(schema.donemSinavDersleri).set(set).where(and(eq(schema.donemSinavDersleri.sinavKod, s.kod), eq(schema.donemSinavDersleri.ders, d.ders)));
+  await islemKaydet('Dönem sınavı', `${s.kod} ${d.ders} ${YAYIN_ADI[alan]} ${ac ? 'yayınlandı' : 'gizlendi'}`);
   return dsDurum();
 }
 
@@ -206,12 +278,16 @@ export async function dsArsiv(kod: string, arsiv: boolean) {
 
 /* ---------- Panelde puan tablosu (e-tablodaki "DS …" sayfasının yerine) ---------- */
 export async function dsPuanTablosu(kod: string) {
-  await yonetici();
-  const s = await sinavBul(vt(), kod);
+  const db = vt();
+  const k = await kapsam(db);
+  const s = await sinavBul(db, kod);
+  const dersler = s.dersler.filter(d => dersYetkili(k, d.ders)).map(d => d.ders);
+  if (!dersler.length) throw new KullaniciHatasi('Bu sınavda size ait ders yok.');
   return {
-    kod: s.kod, ad: s.ad, dersler: s.dersler.map(d => d.ders),
-    ogrenciler: s.ogrenciler.slice().sort((a, b) => a.sinif.localeCompare(b.sinif, 'tr') || alfabetik(a, b))
-      .map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi, sinif: o.sinif, p: o.p }))
+    kod: s.kod, ad: s.ad, dersler,
+    ogrenciler: s.ogrenciler.filter(o => dersler.some(d => sinifYetkili(k, d, o.sinif)))
+      .sort((a, b) => a.sinif.localeCompare(b.sinif, 'tr') || alfabetik(a, b))
+      .map(o => ({ no: o.no, adi: o.adi, soyadi: o.soyadi, sinif: o.sinif, p: Object.fromEntries(dersler.filter(d => o.p[d]).map(d => [d, o.p[d]])) }))
   };
 }
 export type DsPuanTablosu = Awaited<ReturnType<typeof dsPuanTablosu>>;
@@ -227,7 +303,7 @@ const yazPuanlar = async (tx: Db, kod: string, l: { no: string; ders: string; pu
 
 /** Tablodan elle girilen puanlar: hepsi önce denetlenir; biri hatalıysa hiçbiri yazılmaz. */
 export async function dsPuanKaydet(kod: string, degisiklikler: { no: string; ders: string; puan: string }[]) {
-  await yonetici();
+  const k = await kapsam(vt());
   if (!Array.isArray(degisiklikler) || !degisiklikler.length) throw new KullaniciHatasi('Kaydedilecek değişiklik yok.');
   const sonuc = await vt().transaction(async tx => {
     const s = await sinavBul(tx, kod);
@@ -237,6 +313,7 @@ export async function dsPuanKaydet(kod: string, degisiklikler: { no: string; der
     for (const d of degisiklikler) {
       const o = ogr.get(String(d.no));
       if (!o || !dersler.has(d.ders)) { hatalar.push(`${d.no} · ${d.ders}: sınavda yok.`); continue; }
+      if (!sinifYetkili(k, d.ders, o.sinif)) { hatalar.push(`${o.no} ${o.adi} ${o.soyadi} · ${d.ders}: bu öğrencinin puanını girme yetkiniz yok.`); continue; }
       const m = puanMetni(d.puan);
       if (m === null) { hatalar.push(`${o.no} ${o.adi} ${o.soyadi} · ${d.ders}: "${d.puan}" anlaşılamadı (0–100 ya da G).`); continue; }
       if (m !== (o.p[d.ders] ?? '')) yazim.push({ no: o.no, ders: d.ders, puan: m, eski: o.p[d.ders] ?? '', ad: (o.adi + ' ' + o.soyadi).trim() });
@@ -253,11 +330,13 @@ export async function dsPuanKaydet(kod: string, degisiklikler: { no: string; der
 
 /* ---------- Puan listesi yükleme ---------- */
 export async function dsPuanOnizle(kod: string, satirlarHam: unknown, basSatirHam: unknown) {
-  await yonetici();
-  const s = await sinavBul(vt(), kod);
+  const db = vt();
+  const k = await kapsam(db);
+  const s = await sinavBul(db, kod);
   const satirlar = satirlariTemizle(satirlarHam);
   if (!satirlar.length) throw new KullaniciHatasi('Dosyada veri bulunamadı.');
-  const dersler = s.dersler.map(d => d.ders);
+  const dersler = s.dersler.filter(d => dersYetkili(k, d.ders)).map(d => d.ders);
+  if (!dersler.length) throw new KullaniciHatasi('Bu sınavda size ait ders yok.');
   let bas: number, e: DsEslesme;
   if (basSatirHam != null && basSatirHam !== '') { bas = Math.max(0, Math.min(parseInt(String(basSatirHam), 10) || 0, satirlar.length - 1)); e = dsSatirEslesmesi(satirlar[bas], dersler); }
   else { const b = dsBaslikBul(satirlar, dersler); bas = Math.max(0, b.basSatir); e = b.eslesme ?? dsSatirEslesmesi(satirlar[0], dersler); }
@@ -268,7 +347,7 @@ export async function dsPuanOnizle(kod: string, satirlarHam: unknown, basSatirHa
 }
 
 export type DsPuanVerisi = { sinavKod: string; satirlar: unknown; basSatir: unknown; eslesme: Partial<DsEslesme>; dosyaAdi?: string; imza?: string; uzerineYaz?: boolean; adUyusmazYaz?: boolean };
-async function dsPuanHazirla(db: Db, veri: DsPuanVerisi) {
+async function dsPuanHazirla(db: Db, veri: DsPuanVerisi, k: Kapsam) {
   const s = await sinavBul(db, veri?.sinavKod);
   const satirlar = satirlariTemizle(veri.satirlar);
   const bas = Math.max(0, parseInt(String(veri.basSatir ?? ''), 10) || 0);
@@ -276,20 +355,24 @@ async function dsPuanHazirla(db: Db, veri: DsPuanVerisi) {
   const sayi = (v: unknown) => { const x = parseInt(String(v ?? ''), 10); return !isNaN(x) && x >= 0 && x < gen ? x : -1; };
   const es = veri.eslesme ?? {};
   const e: DsEslesme = { no: sayi(es.no), adi: sayi(es.adi), soyadi: sayi(es.soyadi), adSoyad: sayi(es.adSoyad), dersKolon: {} };
-  s.dersler.forEach(d => { e.dersKolon[d.ders] = sayi(es.dersKolon?.[d.ders]); });
+  s.dersler.filter(d => dersYetkili(k, d.ders)).forEach(d => { e.dersKolon[d.ders] = sayi(es.dersKolon?.[d.ders]); });
   if (e.no === -1) throw new KullaniciHatasi('"Öğrenci No" sütunu seçilmedi.');
   const secili = Object.values(e.dersKolon).filter(i => i > -1);
   if (!secili.length) throw new KullaniciHatasi('En az bir dersin puan sütununu seçin.');
   if (new Set(secili).size !== secili.length) throw new KullaniciHatasi('Aynı sütun iki derse seçilemez.');
   const ogr = await db.select({ no: schema.ogrenciler.no, durum: schema.ogrenciler.durum, kayitli: schema.ogrenciler.kayitli }).from(schema.ogrenciler);
   const imza = createHash('sha256').update(JSON.stringify(s.ogrenciler.map(o => [o.no, Object.entries(o.p).sort()]))).digest('base64url');
-  const fark = dsPuanFarkHesapla(satirlar, bas, e, s.ogrenciler, new Map(ogr.filter(o => o.kayitli).map(o => [o.no, o])), { uzerineYaz: !!veri.uzerineYaz, adUyusmazYaz: !!veri.adUyusmazYaz });
+  // Öğretim elemanının sınıfları dışındaki öğrenciler dosyada olsa da "bulunamadı" sayılır
+  const kapsamdaki = s.ogrenciler.filter(o => ogrenciYetkili(k, s, o.sinif));
+  const fark = dsPuanFarkHesapla(satirlar, bas, e, kapsamdaki, new Map(ogr.filter(o => o.kayitli).map(o => [o.no, o])), { uzerineYaz: !!veri.uzerineYaz, adUyusmazYaz: !!veri.adUyusmazYaz });
+  const sinifi = new Map(kapsamdaki.map(o => [o.no, o.sinif]));
+  fark.yazilacak = fark.yazilacak.filter(x => sinifYetkili(k, x.alan, sinifi.get(x.no) ?? ''));
   return { s, fark, imza };
 }
 
 export async function dsPuanFark(veri: DsPuanVerisi) {
-  await yonetici();
-  const { fark: f, imza } = await dsPuanHazirla(vt(), veri);
+  const db = vt();
+  const { fark: f, imza } = await dsPuanHazirla(db, veri, await kapsam(db));
   const k = <T,>(a: T[]) => a.slice(0, LISTE_SINIRI);
   const alan = (x: (typeof f.yeni)[number]) => ({ no: x.no, ad: x.ad, alan: x.alan, eski: x.eski, yeni: x.yeni, adUyusmaz: x.adUyusmaz });
   return { imza,
@@ -299,10 +382,10 @@ export async function dsPuanFark(veri: DsPuanVerisi) {
 export type DsPuanFarki = Awaited<ReturnType<typeof dsPuanFark>>;
 
 export async function dsPuanUygula(veri: DsPuanVerisi) {
-  await yonetici();
+  const kp = await kapsam(vt());
   const sonuc = await vt().transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7306)`);
-    const h = await dsPuanHazirla(tx, veri);
+    const h = await dsPuanHazirla(tx, veri, kp);
     if (h.imza !== veri.imza) throw new KullaniciHatasi('Önizlemeden sonra sınavın puanları değişti. Farkları yeniden hesaplayıp tekrar onaylayın.');
     const y = h.fark.yazilacak;
     if (!y.length) throw new KullaniciHatasi('Yazılacak puan yok.');
@@ -327,9 +410,12 @@ export async function dsKontrol(db: Db, ekle: (seviye: 'hata' | 'uyari' | 'bilgi
 }
 
 /* ---------- Öğrenci ekranı ---------- */
-export type DsOgrenciSinavi = { kod: string; ad: string; sinif: string; yerYayinda: boolean; sonucVar: boolean; dersler: { ders: string; tarih: string; saat: string; yer: string; gecti: boolean }[] };
+export type DsOgrenciSinavi = { kod: string; ad: string; sinif: string; yerYayinda: boolean; sonucVar: boolean; dersler: { ders: string; tarih: string; saat: string; yer: string; yerAcik: boolean; gecti: boolean }[] };
 
-/** Öğrencinin sınavları: yer yayındaysa tarih ve yer; değilse yalnızca sonucu açıklanmış sınavlar (yer verilmez). */
+/**
+ * Öğrencinin sınavları, ders bazında yayın sırasıyla: tarihi yayınlanan dersler görünür; yeri yalnızca sınav yeri
+ * yayınlandıysa, "sonuç açıklandı" yalnızca puanlar yayınlandıysa.
+ */
 export async function dsOgrenciBilgi(db: Db, no: string, bagliYer: (donemKod: string) => string): Promise<{ sinavlar: DsOgrenciSinavi[]; sonucVar: boolean } | null> {
   const kayitlar = await db.select({ kod: schema.donemSinavOgrencileri.sinavKod }).from(schema.donemSinavOgrencileri).where(eq(schema.donemSinavOgrencileri.no, no));
   if (!kayitlar.length) return null;
@@ -341,18 +427,18 @@ export async function dsOgrenciBilgi(db: Db, no: string, bagliYer: (donemKod: st
   for (const s of liste.filter(x => !x.arsiv)) {
     const o = s.ogrenciler.find(x => x.no === no);
     if (!o) continue;
-    const buSonuc = s.dersler.some(d => d.sonucYayinda);
+    const gorunen = s.dersler.filter(d => d.tarihYayinda);
+    if (!gorunen.length) continue;
+    const buSonuc = gorunen.some(d => d.sonucYayinda);
     if (buSonuc) sonucVar = true;
-    if (!s.yerYayinda && !buSonuc) continue;
-    let yer = s.yerYayinda ? s.yerler[o.sinif] || derslik.get(o.sinif) || '' : '';
-    if (s.yerYayinda) { const b = bagliYer(s.kod); if (b) yer = b; }
-    out.push({ kod: s.kod, ad: s.ad, sinif: o.sinif, yerYayinda: s.yerYayinda, sonucVar: buSonuc,
-      dersler: s.dersler.map(d => { const t = trGun(d.tarih); return { ders: d.ders, tarih: d.tarih, saat: d.saat, yer, gecti: t != null && t < bugun }; }) });
+    const yer = bagliYer(s.kod) || s.yerler[o.sinif] || derslik.get(o.sinif) || '';
+    out.push({ kod: s.kod, ad: s.ad, sinif: o.sinif, yerYayinda: gorunen.some(d => d.yerYayinda), sonucVar: buSonuc,
+      dersler: gorunen.map(d => { const t = trGun(d.tarih); return { ders: d.ders, tarih: d.tarih, saat: d.saat, yer: d.yerYayinda ? yer : '', yerAcik: d.yerYayinda, gecti: t != null && t < bugun }; }) });
   }
   return { sinavlar: out, sonucVar };
 }
 
-/** Giriş yapmış öğrencinin yayınlanmış dönem sınavı puanları (kimlik hesap açılırken TC son 6 haneyle doğrulandı). */
+/** Giriş yapmış öğrencinin yayınlanmış dönem sınavı puanları. */
 export async function donemSonuclari() {
   const ot = await oturumGerekli(['ogrenci']);
   const numara = ot.ogrenciNo;

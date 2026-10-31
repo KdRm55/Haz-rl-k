@@ -9,12 +9,14 @@ import { ProgramA4Stil, ProgramCiktiDugmeleri, ProgramOnizleme, useProgramCikti,
 import type { HocaBaslangic, HocaProgramSatiri } from '@/lib/hoca';
 import type { TelafiGirdisi } from '@/lib/sirku-kurallari';
 import type { ProgramSecenek } from '@/lib/yazdirma/program-a4';
+import { DonemSekmesi } from '@/components/yonetim/DonemSekmesi';
 import { OturumDustu } from '@/components/yonetim/ortak';
+import { kapsamliCss, YONETIM_CSS } from '@/components/yonetim/stil';
 import { YoklamaHoca } from '@/components/yoklama/YoklamaHoca';
 import { HocaKabuk } from './Kabuk';
 import { SirkuSonuc, type SirkuVerisi } from './SirkuSonuc';
 
-type Sekme = 'auto' | 'manual' | 'program' | 'yoklama';
+type Sekme = 'auto' | 'manual' | 'program' | 'yoklama' | 'sinav';
 const TUMU = '__TUMU__';
 
 /** Yerel saate göre bu haftanın pazartesisi. */
@@ -166,6 +168,10 @@ function ProgramPaneli({ hocalar, yetkiHatasi }: { hocalar: string[]; yetkiHatas
   );
 }
 
+/* ---------- Sınavlarım: yönetimin dönem sınavı ekranı, öğretim elemanının dersleriyle sınırlı (yetki sunucuda) ---------- */
+// Hoca sayfasının düğmeleri tam genişlik; yönetim kartında içerik genişliğinde kalır
+const SINAV_CSS = kapsamliCss(YONETIM_CSS, '.ykap') + '.ykap{color:#1e293b;} .ykap .btn{width:auto; margin:0;}';
+
 /* ---------- Ana ekran ---------- */
 export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
   const router = useRouter();
@@ -194,7 +200,7 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
   }
 
   const sekmeSec = (s: Sekme) => { setSekme(s); setSonuc(null); };
-  const SEKMELER: [Sekme, string][] = [['auto', 'Haftalık programdan'], ['manual', 'Telafi / manuel giriş'], ['program', 'Ders programım'], ['yoklama', 'Yoklama']];
+  const SEKMELER: [Sekme, string][] = [['auto', 'Haftalık programdan'], ['manual', 'Telafi / manuel giriş'], ['program', 'Ders programım'], ['yoklama', 'Yoklama'], ['sinav', 'Sınavlarım']];
 
   return (
     <HocaKabuk>
@@ -219,6 +225,13 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
         )}
         {sekme === 'manual' && <div className="panel active"><TelafiPaneli b={b} sonuc={setSonuc} /></div>}
         {sekme === 'program' && <div className="panel active"><ProgramPaneli hocalar={b.hocalar} yetkiHatasi={yetkiHatasi} /></div>}
+        {sekme === 'sinav' && (
+          <div className="panel active">
+            <OturumDustu.Provider value={() => router.refresh()}>
+              <div className="ykap"><style>{SINAV_CSS}</style><DonemSekmesi /></div>
+            </OturumDustu.Provider>
+          </div>
+        )}
         {sekme === 'yoklama' && (
           <div className="panel active">
             <OturumDustu.Provider value={() => router.refresh()}><YoklamaHoca b={b} yetkiHatasi={yetkiHatasi} /></OturumDustu.Provider>

@@ -19,7 +19,7 @@ export type Gorunum = { sinif: boolean; derslik: boolean; program: boolean; sina
 export type OgrenciAyarlari = { dogrulama: boolean; kaynak: 'proliz' | 'sayfa'; etiket: string; hane: number };
 
 /** Dönem sınavı (öğrenci ekranı): yer yayındaysa tarih ve yer; sonucu açıklanmışsa sonucVar. */
-export type DonemSinaviBilgisi = { kod: string; ad: string; sinif: string; yerYayinda: boolean; sonucVar: boolean; dersler: { ders: string; tarih: string; saat: string; yer: string; gecti: boolean }[] };
+export type DonemSinaviBilgisi = { kod: string; ad: string; sinif: string; yerYayinda: boolean; sonucVar: boolean; dersler: { ders: string; tarih: string; saat: string; yer: string; yerAcik?: boolean; gecti: boolean }[] };
 /** Sınav yeri listesinden öğrencinin yeri (kitapçık türü verilmez). */
 export type SinavYeriBilgisi = { ad: string; tarih: string; saat: string; yer: string; aciklama: string; salon: string; sira: string; donemKod: string; gecti: boolean };
 

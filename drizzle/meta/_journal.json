@@ -57,6 +57,13 @@
       "when": 1793346280475,
       "tag": "0007_kvkk",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793476489344,
+      "tag": "0008_ders_bazinda_yayin",
+      "breakpoints": true
     }
   ]
 }

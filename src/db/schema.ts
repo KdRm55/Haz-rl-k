@@ -165,11 +165,11 @@ export const sinifTaslagi = pgTable('sinif_taslagi', {
 }).enableRLS();
 
 /* ---------- Dönem (yıl içi) sınavları ---------- */
+// Veritabanında eski "yer_yayinda" sütunu durur, kullanılmaz (yayın 0008'den beri ders bazında: donemSinavDersleri)
 export const donemSinavlari = pgTable('donem_sinavlari', {
   kod: text('kod').primaryKey(),   // "S1", "S2" …
   ad: text('ad').notNull(),
   siniflar: jsonb('siniflar').$type<string[]>().notNull().default([]),   // katılan sınıf adları
-  yerYayinda: boolean('yer_yayinda').notNull().default(false),
   arsiv: boolean('arsiv').notNull().default(false),
   olusturma: timestamp('olusturma', { withTimezone: true }).notNull().defaultNow()
 }).enableRLS();
@@ -179,6 +179,9 @@ export const donemSinavDersleri = pgTable('donem_sinav_dersleri', {
   ders: text('ders').notNull(),
   tarih: text('tarih').notNull().default(''),   // gg.aa.yyyy
   saat: text('saat').notNull().default(''),
+  // Yayın sırası ders bazında: önce tarih, sonra sınav yeri, en son puanlar (her aşama bir öncekini gerektirir)
+  tarihYayinda: boolean('tarih_yayinda').notNull().default(false),
+  yerYayinda: boolean('yer_yayinda').notNull().default(false),
   sonucYayinda: boolean('sonuc_yayinda').notNull().default(false),
   sira: integer('sira').notNull().default(0)
 }, t => [primaryKey({ columns: [t.sinavKod, t.ders] })]).enableRLS();

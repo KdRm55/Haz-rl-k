@@ -74,7 +74,7 @@ function SinavDetayi({ s, r, geri }: { s: SinavOgesi; r: Bulunan; geri: () => vo
       {s.tip === 'muafiyet' ? <MuafiyetKarti sv={s.sv} tur={r.tur} /> : (
         <>
           <div className="sn-bolum">
-            <div className="sn-bolum-baslik">Sınav giriş yeri</div>
+            <div className="sn-bolum-baslik">Sınav tarihi ve yeri</div>
             {s.yer && <YerKutulari y={s.yer} />}
             {s.tip === 'donem' && (
               <>
@@ -82,7 +82,7 @@ function SinavDetayi({ s, r, geri }: { s: SinavOgesi; r: Bulunan; geri: () => vo
                   <div key={x.ders} className={'ds-satir' + (x.gecti ? ' gecti' : '')}>
                     <span className="ds-ders">{x.ders}</span>
                     <span className="ds-zaman">{[x.tarih, x.saat].filter(Boolean).join(' · ')}</span>
-                    <span className="ds-yer">{x.gecti ? 'Tamamlandı' : s.s.yerYayinda ? (s.yer ? '' : x.yer || '-') : 'Açıklanmadı'}</span>
+                    <span className="ds-yer">{x.gecti ? 'Tamamlandı' : (x.yerAcik ?? s.s.yerYayinda) ? (s.yer ? '' : x.yer || '-') : 'Açıklanmadı'}</span>
                   </div>
                 ))}</div>
                 {!s.s.yerYayinda && !s.yer && <p className="bl-ipucu">Sınav yeri henüz açıklanmadı.</p>}

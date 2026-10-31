@@ -112,3 +112,11 @@ describe('dosya okuma ve şablon', () => {
     expect(out).toContain('<dimension ref="A1:H3"/>');
   });
 });
+
+describe('yönetim stilinin hoca ekranında kapsamlanması', () => {
+  it('seçicilere kök eklenir; :root köke döner, body atlanır, @media içi de kapsamlanır', async () => {
+    const { kapsamliCss } = await import('@/components/yonetim/stil');
+    const css = ':root{--brand:#123} body{padding:20px} .btn, .tab{color:red} /* not */ @media (max-width:500px){ .btn{width:100%} } @keyframes spin{to{transform:rotate(1turn)}}';
+    expect(kapsamliCss(css, '.k')).toBe('.k{--brand:#123}.k .btn, .k .tab{color:red}@media (max-width:500px){.k .btn{width:100%}}@keyframes spin{to{transform:rotate(1turn)}}');
+  });
+});
