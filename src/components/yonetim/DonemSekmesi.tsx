@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { dsArsivIslemi, dsBelgeKaydetIslemi, dsBelgeOnizleIslemi, dsDersTarihIslemi, dsDurumIslemi, dsGuncelleIslemi, dsOgrenciGuncelleIslemi, dsOlusturIslemi, dsYayinIslemi } from '@/app/yonetim/islemler';
 import { dosyaOku } from '@/lib/dosya-oku';
 import type { DsDurum, DsYayinAlani } from '@/lib/donem-sinav';
 import type { Sonuc } from '@/lib/islem-sonucu';
+import { basNorm } from '@/lib/metin';
 import { DonemPuanTablosu, DonemPuanYukleme } from './DonemPuan';
 import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
 
@@ -145,7 +146,7 @@ function DersSatiri({ x, d, bekliyor, calis }: {
     <div className="ds-ders">
       <div className="ds-ders-ust">
         <div>
-          <div className="ds-ders-ad">{d.ders}</div>
+          <div className="ds-ders-ad">{d.ders}{d.hocalar.length > 0 && <span className="ds-ders-hoca">{d.hocalar.join(', ')}</span>}</div>
           {!duzen ? (
             <div className="ds-k-meta">{[d.tarih, d.saat].filter(Boolean).join(' · ') || 'Tarih girilmedi'} ·{' '}
               <button type="button" className="ds-baglanti" onClick={() => setDuzen({ tarih: trIso(d.tarih), saat: d.saat })}>{d.tarih ? 'Tarihi değiştir' : 'Tarih gir'}</button></div>
@@ -232,18 +233,32 @@ function SinavKarti({ x, rol, setVeri, mesaj, duzenle }: { x: Sinav; rol: DsDuru
 }
 
 /** Dönem sınavları: yönetimde bütün sınavlar; hoca ekranında yalnızca öğretim elemanının kendi derslerine ait olanlar. */
-export function DonemSekmesi() {
+const HOCA_ANAHTAR = 'hz_yok_hoca_v1';   // yoklama sekmesiyle ortak seçim
+
+/**
+ * hocaSecimi: yalnızca hoca ekranında yöneticiye verilir. Bir öğretim elemanı seçilince yalnızca onun dersleri, o hocanın
+ * gördüğü gibi (yönetime özel düğmeler olmadan) gösterilir; boş seçim bütün sınavlardır.
+ */
+export function DonemSekmesi({ hocaSecimi }: { hocaSecimi?: string[] }) {
   const cagir = useCagir();
   const { veri: d, setVeri, hata } = useVeri(dsDurumIslemi);
   const [arsivGoster, setArsivGoster] = useState(false);
   const [form, setForm] = useState<{ x: Sinav | null } | null>(null);
   const [mesaj, setMesajHam] = useState<MesajDurumu>(null);
   const setMesaj = useCallback((m: MesajDurumu) => setMesajHam(m), []);
+  const [hoca, setHoca] = useState('');
+  useEffect(() => {
+    if (!hocaSecimi) return;
+    try { const h = localStorage.getItem(HOCA_ANAHTAR) || ''; if (hocaSecimi.includes(h)) setHoca(h); } catch { /* yok say */ }
+  }, [hocaSecimi]);
 
   if (hata) return <div className="hata-kutu">{hata}</div>;
   if (!d) return <Yukleniyor />;
-  const admin = d.rol === 'admin';
-  const liste = d.sinavlar.filter(x => arsivGoster || !x.arsiv).slice().reverse();
+  const hn = hocaSecimi && hoca ? basNorm(hoca) : '';
+  const admin = d.rol === 'admin' && !hn;
+  const kartlar = !hn ? d.sinavlar : d.sinavlar.filter(x => !x.arsiv)
+    .map(x => ({ ...x, dersler: x.dersler.filter(y => y.hocalar.some(h => basNorm(h) === hn)) })).filter(x => x.dersler.length);
+  const liste = kartlar.filter(x => arsivGoster || !x.arsiv).slice().reverse();
 
   async function kaydet(v: { ad: string; siniflar?: string[]; dersler: FormDers[] }) {
     const r = form?.x ? await cagir(dsGuncelleIslemi({ kod: form.x.kod, ad: v.ad, dersler: v.dersler })) : await cagir(dsOlusturIslemi(v));
@@ -256,8 +271,14 @@ export function DonemSekmesi() {
   return (
     <section>
       <div className="adim">
+        {hocaSecimi && (
+          <label className="alan" style={{ maxWidth: 420, marginBottom: 10 }}>Öğretim elemanı
+            <select value={hoca} onChange={e => { setHoca(e.target.value); try { localStorage.setItem(HOCA_ANAHTAR, e.target.value); } catch { /* yok say */ } }}>
+              <option value="">— Bütün dersler (yönetim görünümü) —</option>{hocaSecimi.map(h => <option key={h} value={h}>{h}</option>)}
+            </select></label>
+        )}
         <div className="dosya-satir" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-          <div className="bolum-baslik" style={{ margin: 0 }}>{admin ? 'Dönem sınavları' : 'Sınavlarım'}</div>
+          <div className="bolum-baslik" style={{ margin: 0 }}>{admin ? 'Dönem sınavları' : hn ? `${hoca} — sınavlar` : 'Sınavlarım'}</div>
           {admin && <div className="dosya-satir" style={{ gap: 12 }}>
             <label className="onay" style={{ margin: 0 }}><input type="checkbox" checked={arsivGoster} onChange={e => setArsivGoster(e.target.checked)} /><span>Arşivdekileri göster</span></label>
             <button className="btn btn-primary" type="button" onClick={() => setForm({ x: null })}>+ Yeni sınav</button>
@@ -270,8 +291,8 @@ export function DonemSekmesi() {
       <Mesaj m={mesaj} />
       {!liste.length ? <div className="durum">{admin
         ? (d.sinavlar.length ? 'Aktif sınav yok (arşivdekileri görmek için kutuyu işaretleyin).' : 'Henüz dönem sınavı tanımlanmadı. "+ Yeni sınav" ile başlayın.')
-        : 'Derslerinize ait bir sınav yok. Sınavlar yönetim tarafından oluşturulunca burada görünür.'}</div>
-        : liste.map(x => <SinavKarti key={x.kod} x={x} rol={d.rol} setVeri={setVeri} mesaj={setMesaj} duzenle={() => { setForm({ x }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />)}
+        : hn ? `${hoca} adına ders programında eşleşen bir sınav dersi yok.` : 'Derslerinize ait bir sınav yok. Sınavlar yönetim tarafından oluşturulunca burada görünür.'}</div>
+        : liste.map(x => <SinavKarti key={x.kod} x={x} rol={admin ? 'admin' : 'hoca'} setVeri={setVeri} mesaj={setMesaj} duzenle={() => { setForm({ x }); window.scrollTo({ top: 0, behavior: 'smooth' }); }} />)}
     </section>
   );
 }

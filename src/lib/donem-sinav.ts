@@ -110,7 +110,7 @@ export async function dsDurum() {
   const [liste, siniflar, program, belgeler, belgeSayi] = await Promise.all([
     sinavlar(db),
     db.select().from(schema.siniflar).orderBy(asc(schema.siniflar.anahtar)),
-    db.select({ ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami),
+    db.select({ hoca: schema.hocaProgrami.hoca, ders: schema.hocaProgrami.ders, sube: schema.hocaProgrami.sube }).from(schema.hocaProgrami),
     db.select().from(schema.sinavYeriListeleri).where(sql`${schema.sinavYeriListeleri.donemDers} <> ''`),
     db.select({ liste: schema.sinavYeriKayitlari.listeKod, n: sql<number>`count(*)::int`, salon: sql<number>`count(distinct ${schema.sinavYeriKayitlari.salon})::int` })
       .from(schema.sinavYeriKayitlari).groupBy(schema.sinavYeriKayitlari.listeKod)
@@ -124,6 +124,10 @@ export async function dsDurum() {
   };
   // Öğretim elemanı yalnızca kendi derslerinin bulunduğu (arşivde olmayan) sınavları görür
   const gorunen = k.admin ? liste : liste.filter(x => !x.arsiv && x.dersler.some(d => dersYetkili(k, d.ders)));
+  // Dersi sınavın sınıflarında veren öğretim elemanları (kartta gösterilir; yönetici hoca ekranında hocaya göre süzer)
+  const sinifAnah = siniflar.map(s => ({ ad: s.ad, anahtar: s.anahtar }));
+  const dersHocalari = (x: Sinav, ders: string) => [...new Set(program.filter(p => basNorm(p.ders) === basNorm(ders) && x.siniflar.includes(subeEslestir(p.sube, sinifAnah)?.ad ?? ''))
+    .map(p => p.hoca.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
   return {
     rol: (k.admin ? 'admin' : 'hoca') as 'admin' | 'hoca',
     esik: DS_ORT_ESIK,
@@ -140,7 +144,7 @@ export async function dsDurum() {
           const sayi = v.map(p => puanOku(p)).filter((p): p is number => typeof p === 'number');
           return { sinif: sn, n: v.length, girilen: sayi.length, ort: dsOrtalama(v, 1), min: sayi.length ? Math.min(...sayi) : null, max: sayi.length ? Math.max(...sayi) : null };
         });
-        return { ders: d.ders, tarih: d.tarih, saat: d.saat, tarihYayinda: d.tarihYayinda, yerYayinda: d.yerYayinda, sonucYayinda: d.sonucYayinda, belge: belge(x.kod, d.ders), n: tum.length,
+        return { ders: d.ders, hocalar: dersHocalari(x, d.ders), tarih: d.tarih, saat: d.saat, tarihYayinda: d.tarihYayinda, yerYayinda: d.yerYayinda, sonucYayinda: d.sonucYayinda, belge: belge(x.kod, d.ders), n: tum.length,
           girilen: tum.filter(p => typeof puanOku(p) === 'number').length, girmedi: tum.filter(p => p === 'G').length, bos: tum.filter(p => p === '').length,
           ort: dsOrtalama(tum, 1), sinif: siniflarIc };
       })

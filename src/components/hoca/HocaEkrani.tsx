@@ -228,7 +228,7 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
         {sekme === 'sinav' && (
           <div className="panel active">
             <OturumDustu.Provider value={() => router.refresh()}>
-              <div className="ykap"><style>{SINAV_CSS}</style><DonemSekmesi /></div>
+              <div className="ykap"><style>{SINAV_CSS}</style><DonemSekmesi hocaSecimi={b.rol === 'admin' ? b.hocalar : undefined} /></div>
             </OturumDustu.Provider>
           </div>
         )}
