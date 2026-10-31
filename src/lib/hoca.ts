@@ -46,13 +46,16 @@ export async function hocaBaslangic(): Promise<HocaBaslangic> {
   const o = await oturumGerekli(HOCA_ROLLERI);
   const [p, siniflar] = await Promise.all([program(), vt().select().from(schema.siniflar).where(eq(schema.siniflar.aktif, true))]);
   const tum = benzersiz(p.map(x => x.hoca)).sort((a, b) => a.localeCompare(b, 'tr'));
+  // Öğretim elemanının telafi seçimleri (şube, ders) yalnızca programda kendisine ait olanlardır; yönetim hepsini görür
+  const kendi = o.tur === 'hoca' ? p.filter(x => basNorm(x.hoca) === basNorm(o.hocaAdi)) : p;
+  const subeler = o.tur === 'hoca' ? siniflar.filter(s => kendi.some(x => subeEslestir(x.sube, [s]))) : siniflar;
   return {
     rol: o.tur,
     // Hoca yalnızca kendi adını görür (programda henüz yoksa da kendi adıyla telafi evrakı hazırlayabilir)
     hocalar: o.tur === 'hoca' ? [tum.find(h => basNorm(h) === basNorm(o.hocaAdi)) ?? o.hocaAdi].filter(Boolean) : tum,
-    saatler: benzersiz(p.map(x => x.saat)).sort(),
-    dersler: benzersiz(p.map(x => x.ders)).sort((a, b) => a.localeCompare(b, 'tr')),
-    subeler: siniflar.sort((a, b) => a.anahtar.localeCompare(b.anahtar, 'tr')).map(s => ({ key: s.anahtar, name: s.ad }))
+    saatler: benzersiz(kendi.map(x => x.saat)).sort(),
+    dersler: benzersiz(kendi.map(x => x.ders)).sort((a, b) => a.localeCompare(b, 'tr')),
+    subeler: subeler.sort((a, b) => a.anahtar.localeCompare(b.anahtar, 'tr')).map(s => ({ key: s.anahtar, name: s.ad }))
   };
 }
 

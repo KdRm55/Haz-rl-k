@@ -6,7 +6,7 @@ import { vt, schema } from '@/db';
 import { ayarYaz } from './ayar';
 import { KullaniciHatasi } from './hata';
 import { aktifSiniflar, program } from './hoca';
-import { basNorm } from './metin';
+import { basNorm, subeEslestir } from './metin';
 import { ayarlarOku } from './ogrenci';
 import { ogrenciAyarlari } from './ogrenci-kurallari';
 import { hocaKapsami, islemKaydet, kimAdi, oturumGerekli, yetkiGerekli, type Oturum, type Rol } from './oturum';
@@ -103,10 +103,26 @@ async function getirIc(db: Db, o: OturumGirdisi, rol: Rol, siniflar: SinifOgrenc
 }
 export type YoklamaEditoru = Awaited<ReturnType<typeof getirIc>>;
 
+type ProgramSatirlari = Awaited<ReturnType<typeof program>>;
+/** Öğretim elemanının programdaki satırları (yönetim için bütün program). */
+const kendiProgrami = (ot: Oturum, prg: ProgramSatirlari) => (ot.tur === 'hoca' ? prg.filter(r => basNorm(r.hoca) === basNorm(ot.hocaAdi)) : prg);
+
+/** Öğretim elemanı yalnızca ders programında kendisine ait ders ve sınıfın yoklamasını açar ve girer; yönetim bütün derslerinkini. */
+function dersYetkisi(ot: Oturum, prg: ProgramSatirlari, s: { ad: string; anahtar: string }, ders: string) {
+  if (ot.tur !== 'hoca') return;
+  const dn = basNorm(ders);
+  if (!kendiProgrami(ot, prg).some(r => basNorm(r.ders) === dn && subeEslestir(r.sube, [s]))) {
+    throw new KullaniciHatasi(`${s.ad} · ${ders || 'bu ders'} ders programında size ait değil. Yalnızca kendi derslerinizin yoklamasını girebilirsiniz.`);
+  }
+}
+
 export async function yoklamaGetir(o: OturumGirdisi) {
   const ot = await oturumGerekli(HOCA_ROLLERI);
   hocaKapsami(ot, o?.hoca ?? '');
-  return getirIc(vt(), o ?? {} as OturumGirdisi, ot.tur, await aktifSiniflar());
+  const [siniflar, prg] = await Promise.all([aktifSiniflar(), program()]);
+  const s = siniflar.find(x => x.ad === o?.sinif);
+  if (s) dersYetkisi(ot, prg, s, String(o?.ders ?? '').trim());
+  return getirIc(vt(), o ?? {} as OturumGirdisi, ot.tur, siniflar);
 }
 
 export type KayitGirdisi = OturumGirdisi & {
@@ -123,10 +139,12 @@ async function kaydetIc(ot: Oturum, p: KayitGirdisi, kaynak: 'Manuel' | 'Tarama'
   if (!ders) throw new KullaniciHatasi('Ders seçilmedi.');
   if (!hoca) throw new KullaniciHatasi('Öğretim elemanı seçilmedi.');
   hocaKapsami(ot, hoca);
+  dersYetkisi(ot, prg, s, ders);
   const rol = ot.tur;
   const tur: YokTur = p.tur === YOK_TUR.TELAFI ? YOK_TUR.TELAFI : YOK_TUR.PROGRAM;
   const durum: YokDurum = p.durum === YOK_DURUM.YAPILMADI ? YOK_DURUM.YAPILMADI : YOK_DURUM.YAPILDI;
-  if (tur === YOK_TUR.PROGRAM && !programdaVar(p.iso, s, saat, ders, prg)) {
+  // Programdaki ders: öğretim elemanı için o gün ve saatteki ders de kendisine ait olmalı
+  if (tur === YOK_TUR.PROGRAM && !programdaVar(p.iso, s, saat, ders, kendiProgrami(ot, prg))) {
     throw new KullaniciHatasi('Bu ders programda yok. Program dışı bir ders için "Telafi dersi" seçeneğini kullanın.');
   }
   const anahtar = oturumAnahtari(p.iso, s.ad, saat, ders);
