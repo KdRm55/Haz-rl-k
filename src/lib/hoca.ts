@@ -4,7 +4,7 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { vt, schema } from '@/db';
 import { KullaniciHatasi } from './hata';
 import { basNorm, subeEslestir, TR_GUN_SIRA } from './metin';
-import { hocaKapsami, islemKaydet, oturumGerekli, type Rol } from './oturum';
+import { dersAtanmis, hocaKapsami, islemKaydet, oturumGerekli, type Rol } from './oturum';
 import {
   benzersiz, haftaBasi, haftalikSirku, tarihTR, telafiSirkusu,
   type HaftalikSirku, type SinifOgrencili, type TelafiGirdisi, type TopluSirku
@@ -47,7 +47,7 @@ export async function hocaBaslangic(): Promise<HocaBaslangic> {
   const [p, siniflar] = await Promise.all([program(), vt().select().from(schema.siniflar).where(eq(schema.siniflar.aktif, true))]);
   const tum = benzersiz(p.map(x => x.hoca)).sort((a, b) => a.localeCompare(b, 'tr'));
   // Öğretim elemanının telafi seçimleri (şube, ders) yalnızca programda kendisine ait olanlardır; yönetim hepsini görür
-  const kendi = o.tur === 'hoca' ? p.filter(x => basNorm(x.hoca) === basNorm(o.hocaAdi)) : p;
+  const kendi = o.tur === 'hoca' ? p.filter(x => basNorm(x.hoca) === basNorm(o.hocaAdi) && dersAtanmis(o, x.ders)) : p;
   const subeler = o.tur === 'hoca' ? siniflar.filter(s => kendi.some(x => subeEslestir(x.sube, [s]))) : siniflar;
   return {
     rol: o.tur,
@@ -66,7 +66,8 @@ export async function hocaHaftalik(teacher: string, haftaISO: string): Promise<H
   const bas = haftaBasi(haftaISO);
   const [siniflar, p] = await Promise.all([aktifSiniflar(), program()]);
   if (!siniflar.length) throw new KullaniciHatasi('Hiç aktif sınıf yok. Yönetim panelinden sınıfları kontrol edin.');
-  return { teacher: teacher.trim(), weekStart: tarihTR(bas), sections: haftalikSirku(teacher, bas, siniflar, p) };
+  // Öğretim elemanı yalnızca kendisine atanan derslerin sirküsünü alır
+  return { teacher: teacher.trim(), weekStart: tarihTR(bas), sections: haftalikSirku(teacher, bas, siniflar, p.filter(x => dersAtanmis(o, x.ders))) };
 }
 
 /** Tüm öğretim elemanlarının haftalık sirküleri; yalnızca o hafta dersi olan şubeler döner. */
@@ -103,7 +104,7 @@ export async function hocaProgrami(teacher: string): Promise<{ teacher: string; 
   const [p, siniflar] = await Promise.all([program(), vt().select().from(schema.siniflar).where(eq(schema.siniflar.aktif, true))]);
   const hn = basNorm(teacher);
   const out = p
-    .filter(x => basNorm(x.hoca) === hn && TR_GUN_SIRA[basNorm(x.gun)] != null)
+    .filter(x => basNorm(x.hoca) === hn && dersAtanmis(o, x.ders) && TR_GUN_SIRA[basNorm(x.gun)] != null)
     .map(x => {
       const s = subeEslestir(x.sube, siniflar);
       return { sira: TR_GUN_SIRA[basNorm(x.gun)], gun: x.gun, saat: x.saat, ders: x.ders, sube: s ? s.ad : x.sube, derslik: x.derslik || s?.derslik || '' };

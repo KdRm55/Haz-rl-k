@@ -107,8 +107,26 @@ function HesapEkle({ adlar, bitti }: { adlar: string[]; bitti: (kim: string, sif
   );
 }
 
-function Satir({ h, benId, adlar, degisti, mesaj, sifreGoster }: {
-  h: Hesap; benId: number; adlar: string[]; degisti: () => void; mesaj: (m: MesajDurumu) => void; sifreGoster: (kim: string, s: string) => void;
+/** Hocaya atanan dersler: ders programında verdiği derslerden seçilir; hepsi seçiliyse (kayıtta boş) programdaki bütün dersleri. */
+function DersAtama({ h, secenek, kaydet }: { h: Hesap; secenek: string[]; kaydet: (dersler: string[]) => void }) {
+  if (!h.hocaAdi) return <span className="hint">Önce ders programındaki adını seçin</span>;
+  if (!secenek.length) return <span className="uyari-metin" style={{ fontSize: 12.5 }}>Programda bu ada ait ders yok</span>;
+  const secili = (d: string) => !h.dersler.length || h.dersler.includes(d);
+  const degistir = (d: string, ac: boolean) => {
+    const yeni = secenek.filter(x => (x === d ? ac : secili(x)));
+    if (!yeni.length) { alert('En az bir ders seçili kalmalı. Hocanın hiçbir derse erişmemesi için hesabı kapatın.'); return; }
+    kaydet(yeni);
+  };
+  return (
+    <div className="ders-atama">
+      {secenek.map(d => <label key={d} className="onay" style={{ margin: 0 }}><input type="checkbox" checked={secili(d)} onChange={e => degistir(d, e.target.checked)} /><span>{d}</span></label>)}
+      {!h.dersler.length && secenek.length > 1 && <span className="hint">tümü</span>}
+    </div>
+  );
+}
+
+function Satir({ h, benId, adlar, hocaDersleri, degisti, mesaj, sifreGoster }: {
+  h: Hesap; benId: number; adlar: string[]; hocaDersleri: Record<string, string[]>; degisti: () => void; mesaj: (m: MesajDurumu) => void; sifreGoster: (kim: string, s: string) => void;
 }) {
   const cagir = useCagir();
   const ben = h.id === benId, kim = h.adSoyad || h.ogrenciNo || h.eposta;
@@ -141,6 +159,7 @@ function Satir({ h, benId, adlar, degisti, mesaj, sifreGoster }: {
         {h.kvkk && <span className="rozet-durum" style={{ marginLeft: 6 }} title={'KVKK onayı: ' + h.kvkk}>KVKK ✓</span>}</td>
       <td className="no">{h.tur === 'ogrenci' ? h.ogrenciNo : h.eposta}</td>
       {h.tur === 'hoca' && <td><HocaAdiSec deger={h.hocaAdi} adlar={adlar} degisti={v => sonuc(cagir(hesapGuncelleIslemi(h.id, { hocaAdi: v })), `${kim}: ders programı adı "${v}" olarak kaydedildi.`)} /></td>}
+      {h.tur === 'hoca' && <td><DersAtama h={h} secenek={hocaDersleri[h.hocaAdi] ?? []} kaydet={l => sonuc(cagir(hesapGuncelleIslemi(h.id, { dersler: l })), `${kim}: dersleri ${l.join(', ')} olarak kaydedildi. Hoca yalnızca bu derslerin yoklama, sınav ve programını görür.`)} /></td>}
       <td><span className={'rozet-durum' + (h.durum === 'pasif' ? ' silindi' : h.durum === 'bekliyor' ? ' listede-yok' : '')}>{DURUM_ETIKET[h.durum]}</span></td>
       <td className="wrap-cell">{h.sonGiris || 'hiç girmedi'}</td>
       <td>
@@ -203,12 +222,13 @@ export function HesaplarSekmesi() {
           <button key={t} type="button" role="tab" className={'tab' + (tur === t ? ' active' : '')} aria-selected={tur === t} onClick={() => setTur(t)}>{TUR_ETIKET[t]} ({say(t)})</button>
         ))}
       </div>
+      {tur === 'hoca' && <p className="aciklama" style={{ margin: '4px 0 8px' }}>Öğretim elemanı yalnızca &quot;Dersleri&quot; sütununda işaretli derslerin yoklamasını, sınavlarını, ders programını ve sirkülerini görür ve yönetir; başka hocaların derslerini göremez. Seçenekler, hocanın ders programındaki dersleridir; hepsi işaretliyse programdaki bütün dersleri.</p>}
       <div className="filtre"><input type="search" placeholder="Ad, e-posta ya da numara ile ara" value={ara} onChange={e => setAra(e.target.value)} aria-label="Hesaplarda ara" /></div>
       {liste.length ? (
         <div className="table-card"><div className="scroller">
           <table className="duzen-tablo">
-            <thead><tr><th>Ad soyad</th><th>{tur === 'ogrenci' ? 'Öğrenci no' : 'E-posta'}</th>{tur === 'hoca' && <th>Ders programındaki adı</th>}<th>Durum</th><th>Son giriş</th><th></th></tr></thead>
-            <tbody>{liste.map(h => <Satir key={h.id} h={h} benId={veri.benId} adlar={veri.hocaAdlari} degisti={yenile} mesaj={x => { setGecici(null); setM(x); }} sifreGoster={sifreGoster} />)}</tbody>
+            <thead><tr><th>Ad soyad</th><th>{tur === 'ogrenci' ? 'Öğrenci no' : 'E-posta'}</th>{tur === 'hoca' && <th>Ders programındaki adı</th>}{tur === 'hoca' && <th>Dersleri</th>}<th>Durum</th><th>Son giriş</th><th></th></tr></thead>
+            <tbody>{liste.map(h => <Satir key={h.id} h={h} benId={veri.benId} adlar={veri.hocaAdlari} hocaDersleri={veri.hocaDersleri} degisti={yenile} mesaj={x => { setGecici(null); setM(x); }} sifreGoster={sifreGoster} />)}</tbody>
           </table>
         </div></div>
       ) : <div className="durum">{ara ? 'Aramaya uyan hesap yok.' : tur === 'ogrenci' ? 'Henüz hesap açan öğrenci yok. Öğrenciler öğrenci ekranından numaraları ve TC son 6 haneleriyle hesap açar.' : 'Bu türde hesap yok.'}</div>}

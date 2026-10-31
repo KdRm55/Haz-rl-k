@@ -31,6 +31,7 @@ const SAYFA_ADI: Record<Sayfa, string> = { yonetim: 'Yönetim paneli', hoca: 'Ho
 export type Oturum = {
   id: number; tur: Rol; adSoyad: string; eposta: string; ogrenciNo: string; hocaAdi: string; sifreDegistirmeli: boolean;
   kvkkOnayli: boolean;   // öğrenci güncel KVKK metnini onayladı mı (diğer hesaplar için her zaman true)
+  dersler: string[];     // öğretim elemanına atanan dersler (boş: ders programındaki bütün dersleri)
 };
 
 function anahtar() {
@@ -55,7 +56,7 @@ export const oturum = cache(async (): Promise<Oturum | null> => {
     const [u] = await vt().select().from(schema.kullanicilar).where(eq(schema.kullanicilar.id, id));
     if (!u || u.durum !== 'aktif' || u.oturumSurumu !== surum) return null;
     return { id: u.id, tur: u.tur as Rol, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, sifreDegistirmeli: u.sifreDegistirmeli,
-      kvkkOnayli: u.tur !== 'ogrenci' || u.kvkkSurum === KVKK_SURUM };
+      kvkkOnayli: u.tur !== 'ogrenci' || u.kvkkSurum === KVKK_SURUM, dersler: u.dersler ?? [] };
   } catch {
     return null;
   }
@@ -83,6 +84,12 @@ export function hocaKapsami(o: Oturum, teacher: string) {
     throw new KullaniciHatasi('Yalnızca kendi derslerinizle ilgili işlem yapabilirsiniz.');
   }
 }
+/**
+ * Öğretim elemanı bu dersin işlemlerini yapabilir mi: hesaba ders atanmışsa yalnızca atanan dersler, atanmamışsa
+ * ders programında kendi adıyla verdiği bütün dersler (program eşleşmesi ayrıca denetlenir). Yönetici her ders.
+ */
+export const dersAtanmis = (o: Pick<Oturum, 'tur' | 'dersler'>, ders: string) =>
+  o.tur !== 'hoca' || !o.dersler.length || o.dersler.some(d => basNorm(d) === basNorm(ders));
 export const kimAdi = (o: Pick<Oturum, 'adSoyad' | 'eposta' | 'ogrenciNo'>) => o.adSoyad || o.eposta || o.ogrenciNo;
 
 export async function islemKaydet(islem: string, ayrinti = '', kullanici?: string) {

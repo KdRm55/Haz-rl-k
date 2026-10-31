@@ -71,6 +71,13 @@
       "when": 1793477653530,
       "tag": "0009_giris_belgesi",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793480137774,
+      "tag": "0010_hoca_dersleri",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ import {
 import { KullaniciHatasi } from './hata';
 import { basNorm, subeEslestir } from './metin';
 import { dogrulamaEslesir } from './ogrenci-kurallari';
-import { islemKaydet, oturumGerekli, yetkiGerekli } from './oturum';
+import { dersAtanmis, islemKaydet, oturumGerekli, yetkiGerekli } from './oturum';
 import { puanMetni } from './puan-kurallari';
 import { alfabetik } from './siniflandirma-kurallari';
 import { puanGoster, puanOku } from './sinav';
@@ -77,7 +77,7 @@ async function kapsam(db: Db): Promise<Kapsam> {
   ]);
   const dersSinif = new Map<string, Set<string>>();
   for (const x of p) {
-    if (basNorm(x.hoca) !== hn) continue;
+    if (basNorm(x.hoca) !== hn || !dersAtanmis(ot, x.ders)) continue;
     const s = subeEslestir(x.sube, siniflar);
     if (!s) continue;
     const k = basNorm(x.ders);

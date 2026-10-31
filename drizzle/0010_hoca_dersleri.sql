@@ -1,0 +1,1 @@
+ALTER TABLE "kullanicilar" ADD COLUMN "dersler" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -205,6 +205,12 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
   return (
     <HocaKabuk>
       <div className="workspace">
+        {b.rol === 'admin' && (
+          <div className="yonetici-modu" role="note">
+            <strong>Yönetici modu.</strong> Yönetici hesabıyla girdiğiniz için bütün öğretim elemanlarının derslerini, yoklamalarını ve sınavlarını görür ve değiştirebilirsiniz.
+            Bir hocanın yalnızca kendi derslerini gördüğü ekran için o hocanın hesabıyla girin; hocanın dersleri yönetim panelindeki &quot;Kullanıcılar&quot; sekmesinden atanır.
+          </div>
+        )}
         <div className="tabs-wrapper" role="tablist">
           {SEKMELER.map(([k, et]) => (
             <button key={k} type="button" role="tab" aria-selected={sekme === k} className={'tab-btn' + (sekme === k ? ' active' : '')} onClick={() => sekmeSec(k)}>{et}</button>

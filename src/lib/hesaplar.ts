@@ -5,6 +5,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import { vt, schema } from '@/db';
 import { KullaniciHatasi } from './hata';
 import { adSoyadNorm, epostaNorm, geciciSifre, type HesapDurumu } from './hesap-kurallari';
+import { basNorm } from './metin';
 import { benzersiz } from './sirku-kurallari';
 import { kodOzeti } from './kod';
 import { KVKK_SURUM } from './kvkk';
@@ -35,16 +36,18 @@ export async function hesapListesi() {
   const db = vt();
   const [hesaplar, program, ogr] = await Promise.all([
     db.select().from(k).orderBy(asc(k.tur), asc(k.adSoyad)),
-    db.select({ hoca: schema.hocaProgrami.hoca }).from(schema.hocaProgrami),
+    db.select({ hoca: schema.hocaProgrami.hoca, ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami),
     db.select({ n: sql<number>`count(*)::int`, tc: sql<number>`count(*) filter (where ${schema.ogrenciler.tc6} <> '')::int` })
       .from(schema.ogrenciler).where(eq(schema.ogrenciler.durum, 'aktif'))
   ]);
   return {
     benId: ben.id,
     hocaAdlari: benzersiz(program.map(p => p.hoca)).sort((a, b) => a.localeCompare(b, 'tr')),
+    // Her hocanın ders programındaki dersleri (hesaba ders atarken seçenekler)
+    hocaDersleri: Object.fromEntries(benzersiz(program.map(p => p.hoca)).map(h => [h, benzersiz(program.filter(p => p.hoca === h).map(p => p.ders).filter(Boolean)).sort((a, b) => a.localeCompare(b, 'tr'))])) as Record<string, string[]>,
     ogrenci: { aktif: ogr[0].n, tcVar: ogr[0].tc },
     hesaplar: hesaplar.map(u => ({
-      id: u.id, tur: u.tur, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, durum: u.durum as HesapDurumu,
+      id: u.id, tur: u.tur, adSoyad: u.adSoyad, eposta: u.eposta ?? '', ogrenciNo: u.ogrenciNo ?? '', hocaAdi: u.hocaAdi, dersler: u.dersler ?? [], durum: u.durum as HesapDurumu,
       sifreDegistirmeli: u.sifreDegistirmeli, olusturma: tarihSaat(u.olusturma), sonGiris: tarihSaat(u.sonGiris),
       kvkk: u.tur !== 'ogrenci' ? null : u.kvkkSurum === KVKK_SURUM ? tarihSaat(u.kvkkOnay) : ''   // '' = güncel onay yok
     }))
@@ -79,12 +82,21 @@ export async function hesapEkle(v: { tur: 'admin' | 'hoca'; adSoyad: string; epo
 }
 
 /** Ad, ders programı adı ve tür (yönetici ↔ hoca) düzenleme. */
-export async function hesapGuncelle(id: number, v: { adSoyad?: string; hocaAdi?: string; tur?: 'admin' | 'hoca' }) {
+export async function hesapGuncelle(id: number, v: { adSoyad?: string; hocaAdi?: string; tur?: 'admin' | 'hoca'; dersler?: string[] }) {
   const ben = await yonetici();
   const u = await hesapBul(id);
   const set: Partial<typeof k.$inferInsert> = {};
   if (v.adSoyad != null) set.adSoyad = adSoyadNorm(v.adSoyad);
-  if (v.hocaAdi != null) set.hocaAdi = String(v.hocaAdi).trim();
+  if (v.hocaAdi != null) { set.hocaAdi = String(v.hocaAdi).trim(); if (set.hocaAdi !== u.hocaAdi) set.dersler = []; }   // ad değişince atanan dersler sıfırlanır
+  if (v.dersler != null) {
+    // Atanan dersler hocanın ders programındaki derslerinden seçilir; boş liste: programdaki bütün dersleri
+    const hn = basNorm(set.hocaAdi ?? u.hocaAdi);
+    const programda = benzersiz((await vt().select({ hoca: schema.hocaProgrami.hoca, ders: schema.hocaProgrami.ders }).from(schema.hocaProgrami))
+      .filter(p => basNorm(p.hoca) === hn).map(p => p.ders).filter(Boolean));
+    const secilen = benzersiz((Array.isArray(v.dersler) ? v.dersler : []).map(d => programda.find(p => basNorm(p) === basNorm(String(d)))).filter((d): d is string => !!d));
+    if (Array.isArray(v.dersler) && v.dersler.length && !secilen.length) throw new KullaniciHatasi('Seçilen dersler bu hocanın ders programında yok.');
+    set.dersler = secilen.length === programda.length ? [] : secilen;
+  }
   if (v.tur && v.tur !== u.tur) {
     if (u.tur === 'ogrenci') throw new KullaniciHatasi('Öğrenci hesabının türü değiştirilemez.');
     if (u.tur === 'admin') await yoneticiKorumasi(ben, u);

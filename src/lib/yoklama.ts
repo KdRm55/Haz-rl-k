@@ -9,7 +9,7 @@ import { aktifSiniflar, program } from './hoca';
 import { basNorm, subeEslestir } from './metin';
 import { ayarlarOku } from './ogrenci';
 import { ogrenciAyarlari } from './ogrenci-kurallari';
-import { hocaKapsami, islemKaydet, kimAdi, oturumGerekli, yetkiGerekli, type Oturum, type Rol } from './oturum';
+import { dersAtanmis, hocaKapsami, islemKaydet, kimAdi, oturumGerekli, yetkiGerekli, type Oturum, type Rol } from './oturum';
 import type { SinifOgrencili } from './sirku-kurallari';
 import {
   devamsizlikHesapla, eksikOturumlar, evrakNoUret, gelmeyenSayisi, gunAdi, haftalikDersSaatleri, isoEkle, isoGecerli, isoTr, noListesi,
@@ -59,10 +59,11 @@ export async function yoklamaHaftasi(teacher: string, haftaIso: string) {
   const [siniflar, p, k] = await Promise.all([aktifSiniflar(), program(), vt().select().from(schema.yoklamalar)
     .where(and(gte(schema.yoklamalar.tarih, bas), sql`${schema.yoklamalar.tarih} <= ${bit}`))]);
   const harita = new Map(k.map(r => [r.anahtar, kayitCoz(r)]));
-  const liste = programOturumlari(bas, p, ozetler(siniflar), { hoca: teacher }).map(o => oturumOzeti(o, harita.get(o.anahtar)));
+  const atanan = p.filter(r => dersAtanmis(ot, r.ders));
+  const liste = programOturumlari(bas, atanan, ozetler(siniflar), { hoca: teacher }).map(o => oturumOzeti(o, harita.get(o.anahtar)));
   const var_ = new Set(liste.map(o => o.anahtar)), hn = basNorm(teacher);
   for (const x of harita.values()) {
-    if (var_.has(x.anahtar) || basNorm(x.hoca) !== hn) continue;
+    if (var_.has(x.anahtar) || basNorm(x.hoca) !== hn || !dersAtanmis(ot, x.ders)) continue;
     liste.push(oturumOzeti({ anahtar: x.anahtar, iso: x.iso, tarih: isoTr(x.iso), gun: gunAdi(x.iso), saat: x.saat, ders: x.ders, sinif: x.sinif, hoca: x.hoca, derslik: '', tur: x.tur as YokTur }, x));
   }
   liste.sort((a, b) => a.iso.localeCompare(b.iso) || a.saat.localeCompare(b.saat, 'tr') || a.sinif.localeCompare(b.sinif, 'tr'));
@@ -105,7 +106,7 @@ export type YoklamaEditoru = Awaited<ReturnType<typeof getirIc>>;
 
 type ProgramSatirlari = Awaited<ReturnType<typeof program>>;
 /** Öğretim elemanının programdaki satırları (yönetim için bütün program). */
-const kendiProgrami = (ot: Oturum, prg: ProgramSatirlari) => (ot.tur === 'hoca' ? prg.filter(r => basNorm(r.hoca) === basNorm(ot.hocaAdi)) : prg);
+const kendiProgrami = (ot: Oturum, prg: ProgramSatirlari) => (ot.tur === 'hoca' ? prg.filter(r => basNorm(r.hoca) === basNorm(ot.hocaAdi) && dersAtanmis(ot, r.ders)) : prg);
 
 /** Öğretim elemanı yalnızca ders programında kendisine ait ders ve sınıfın yoklamasını açar ve girer; yönetim bütün derslerinkini. */
 function dersYetkisi(ot: Oturum, prg: ProgramSatirlari, s: { ad: string; anahtar: string }, ders: string) {
@@ -189,16 +190,18 @@ export async function yoklamaSil(anahtar: string) {
 /* ---------- Öğrenciye göre yoklama (hoca ekranı) ---------- */
 /** Numara ya da ad soyadla öğrenci arama (aktif öğrenciler, en çok 20). */
 export async function yoklamaOgrenciAra(qHam: string) {
-  await oturumGerekli(HOCA_ROLLERI);
+  const ot = await oturumGerekli(HOCA_ROLLERI);
   const q = basNorm(String(qHam ?? '')).trim(), qNo = String(qHam ?? '').replace(/\s+/g, '');
   if (q.length < 2) throw new KullaniciHatasi('Aramak için en az 2 karakter yazın.');
   const [ogr, siniflar] = await Promise.all([
     vt().select({ no: schema.ogrenciler.no, adi: schema.ogrenciler.adi, soyadi: schema.ogrenciler.soyadi, sinifId: schema.ogrenciler.sinifId })
       .from(schema.ogrenciler).where(eq(schema.ogrenciler.durum, 'aktif')),
-    vt().select({ id: schema.siniflar.id, ad: schema.siniflar.ad }).from(schema.siniflar)
+    vt().select({ id: schema.siniflar.id, ad: schema.siniflar.ad, anahtar: schema.siniflar.anahtar }).from(schema.siniflar)
   ]);
   const sinifAd = new Map(siniflar.map(s => [s.id, s.ad]));
-  return ogr.filter(o => (/^\d+$/.test(qNo) && o.no.includes(qNo)) || basNorm(o.adi + ' ' + o.soyadi).includes(q))
+  // Öğretim elemanı yalnızca kendi derslerini verdiği sınıfların öğrencilerini bulur
+  const izinli = ot.tur === 'hoca' ? new Set(kendiProgrami(ot, await program()).map(r => subeEslestir(r.sube, siniflar)?.id).filter(Boolean)) : null;
+  return ogr.filter(o => (!izinli || (o.sinifId != null && izinli.has(o.sinifId))) && ((/^\d+$/.test(qNo) && o.no.includes(qNo)) || basNorm(o.adi + ' ' + o.soyadi).includes(q)))
     .sort((a, b) => (a.adi + ' ' + a.soyadi).localeCompare(b.adi + ' ' + b.soyadi, 'tr') || a.no.localeCompare(b.no))
     .slice(0, 20)
     .map(o => ({ no: o.no, ad: (o.adi + ' ' + o.soyadi).trim(), sinif: o.sinifId ? sinifAd.get(o.sinifId) ?? '' : '' }));
@@ -206,8 +209,8 @@ export async function yoklamaOgrenciAra(qHam: string) {
 export type YoklamaOgrenciBulunan = Awaited<ReturnType<typeof yoklamaOgrenciAra>>[number];
 
 /**
- * Öğrencinin sınıfına ait (ya da listesinde bulunduğu) bütün yoklama günleri, yeniden eskiye.
- * Hoca yalnızca kendi derslerini değiştirebilir; diğerleri bilgi olarak görünür.
+ * Öğrencinin sınıfına ait (ya da listesinde bulunduğu) yoklama günleri, yeniden eskiye.
+ * Öğretim elemanı yalnızca kendi derslerinin günlerini görür ve değiştirir; yönetim hepsini.
  */
 export async function yoklamaOgrenciKayitlari(noHam: string) {
   const ot = await oturumGerekli(HOCA_ROLLERI);
@@ -217,8 +220,9 @@ export async function yoklamaOgrenciKayitlari(noHam: string) {
   const sinif = o.sinifId ? (await vt().select({ ad: schema.siniflar.ad }).from(schema.siniflar).where(eq(schema.siniflar.id, o.sinifId)))[0]?.ad ?? '' : '';
   const y = schema.yoklamalar;
   const kosul = sql`${y.liste} @> ${JSON.stringify([no])}::jsonb`;
-  const k = await kayitlar(vt(), sinif ? sql`(${y.sinif} = ${sinif} or ${kosul})` : kosul);
   const hn = basNorm(ot.hocaAdi), bugun = bugunIso();
+  const k = (await kayitlar(vt(), sinif ? sql`(${y.sinif} = ${sinif} or ${kosul})` : kosul))
+    .filter(x => ot.tur === 'admin' || (basNorm(x.hoca) === hn && dersAtanmis(ot, x.ders)));
   k.sort((a, b) => b.iso.localeCompare(a.iso) || a.saat.localeCompare(b.saat, 'tr') || a.ders.localeCompare(b.ders, 'tr'));
   return {
     no, ad: (o.adi + ' ' + o.soyadi).trim(), sinif,
@@ -244,6 +248,7 @@ export async function yoklamaOgrenciGuncelle(p: { anahtar: string; no: string; y
     const k = (await kayitlar(tx, eq(schema.yoklamalar.anahtar, String(p?.anahtar ?? ''))))[0];
     if (!k) throw new KullaniciHatasi('Yoklama bulunamadı; silinmiş olabilir. Listeyi yenileyin.');
     hocaKapsami(ot, k.hoca);
+    if (!dersAtanmis(ot, k.ders)) throw new KullaniciHatasi(`"${k.ders}" dersi size atanmamış.`);
     if (k.surum !== Number(p.surum)) throw new KullaniciHatasi(`Bu yoklama siz açtıktan sonra değişti (${k.kaydeden}, ${k.zaman}). Listeyi yenileyip tekrar deneyin.`);
     if (k.durum !== YOK_DURUM.YAPILDI) throw new KullaniciHatasi('Bu ders "yapılmadı" olarak kayıtlı; devamsızlık girilemez.');
     if (k.iso > bugunIso()) throw new KullaniciHatasi('İleri tarihli bir derse yoklama girilemez.');
@@ -280,7 +285,7 @@ export async function hocaYoklamaDokumu(teacher: string, basHam?: string, bitHam
   if (bas > bit) throw new KullaniciHatasi('Başlangıç tarihi bitişten sonra olamaz.');
   const hn = basNorm(teacher);
   const [siniflar, tum] = await Promise.all([aktifSiniflar(), kayitlar(vt(), and(gte(schema.yoklamalar.tarih, bas), sql`${schema.yoklamalar.tarih} <= ${bit}`))]);
-  const k = tum.filter(x => basNorm(x.hoca) === hn)
+  const k = tum.filter(x => basNorm(x.hoca) === hn && dersAtanmis(ot, x.ders))
     .sort((a, b) => a.iso.localeCompare(b.iso) || a.saat.localeCompare(b.saat, 'tr') || a.ders.localeCompare(b.ders, 'tr'));
   // Sınıf listesinde olmayıp yoklamada geçen öğrencilerin adları
   const bilinen = new Set(siniflar.flatMap(s => s.ogrenciler.map(o => o.no)));

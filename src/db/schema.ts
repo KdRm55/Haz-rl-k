@@ -68,6 +68,7 @@ export const kullanicilar = pgTable('kullanicilar', {
   eposta: text('eposta').unique(),                             // yönetici ve hoca (küçük harf)
   adSoyad: text('ad_soyad').notNull().default(''),
   hocaAdi: text('hoca_adi').notNull().default(''),             // hocanın ders programındaki adı
+  dersler: jsonb('dersler').$type<string[]>().notNull().default([]),   // hocaya atanan dersler (programdaki derslerinden); boşsa hepsi
   sifreOzeti: text('sifre_ozeti').notNull(),                   // scrypt özeti
   durum: text('durum').notNull().default('aktif'),             // 'bekliyor' | 'aktif' | 'pasif'
   sifreDegistirmeli: boolean('sifre_degistirmeli').notNull().default(false),   // yöneticinin verdiği geçici şifre
