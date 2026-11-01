@@ -203,10 +203,12 @@ button:disabled { opacity:.6; cursor:not-allowed; transform:none; }
 .ds-sinav + .ds-sinav { margin-top:12px; }
 .ds-ad { font-size:14px; font-weight:700; color:var(--brand); margin-bottom:6px; }
 .ds-alt { font-weight:500; color:#64748b; }
-.ds-satir { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:6px 0; border-top:1px solid #eef1f6; font-size:13px; }
-.ds-satir .ds-ders { font-weight:600; color:#1e293b; }
-.ds-satir .ds-zaman { color:#475569; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:12.5px; }
-.ds-satir .ds-yer { font-weight:700; color:#b4630c; text-align:right; }
+/* Ders adı ve tarih solda alt alta, durum/yer sağda: dar ekranda da birbirine girmez */
+.ds-satir { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,auto); grid-template-areas:"ders yer" "zaman yer"; column-gap:12px; row-gap:2px; align-items:center; padding:8px 0; border-top:1px solid #eef1f6; font-size:13px; }
+.ds-satir .ds-ders { grid-area:ders; font-weight:600; color:#1e293b; overflow-wrap:anywhere; }
+.ds-satir .ds-zaman { grid-area:zaman; color:#475569; font-variant-numeric:tabular-nums; font-size:12.5px; }
+.ds-satir .ds-yer { grid-area:yer; font-weight:700; color:#b4630c; text-align:right; max-width:min(60vw, 260px); overflow-wrap:anywhere; }
+.ds-satir .ds-yer:empty { display:none; }
 .ds-satir.gecti { opacity:.55; }
 .ds-satir.gecti .ds-yer { color:#64748b; font-weight:500; }
 .ds-sonuc { margin-top:12px; }

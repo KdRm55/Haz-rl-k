@@ -128,6 +128,11 @@ export function SirkuSonuc({ s, rol }: { s: SirkuVerisi; rol?: Rol }) {
   // Satır yükseklikleri sayfaya sığdırılır; yazı tipleri yüklenince ve pencere boyutu değişince yeniden
   useLayoutEffect(() => {
     const yerlestir = () => {
+      // Dar ekranda A4 sayfa kutuya sığacak kadar küçültülür (yazdırma ve PDF gerçek boyutlu kopyayı kullanır)
+      kok.current?.querySelectorAll<HTMLElement>('.sheet .paper').forEach(p => {
+        const sayfa = p.querySelector<HTMLElement>('.page');
+        if (sayfa?.offsetWidth) p.style.setProperty('--olcek', String(Math.min(1, p.clientWidth / sayfa.offsetWidth)));
+      });
       const e: Record<string, number> = {};
       kok.current?.querySelectorAll<HTMLElement>('section.sheet').forEach(k => { e[k.dataset.anahtar!] = kartYerlesim(k); });
       setEksikler(onceki => JSON.stringify(onceki) === JSON.stringify(e) ? onceki : e);

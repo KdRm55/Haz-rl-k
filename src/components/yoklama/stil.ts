@@ -158,4 +158,10 @@ table.yk-tablo{width:100%; border-collapse:collapse; font-size:14px;}
   .yk-tablo td.no{width:auto;}
   .yk-tablo th.c, .yk-tablo td.c{width:66px;}
   .yk-onay{width:54px;}
-}`;
+}
+@media (max-width:520px){
+  .yk-oturum{flex-wrap:wrap; row-gap:4px;}
+  .yk-oturum .yo-ders{flex-basis:100%; order:3;}
+  .yk-oturum .yo-saat{min-width:0; margin-right:auto;}
+}
+`;

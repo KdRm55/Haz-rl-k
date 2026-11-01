@@ -119,10 +119,11 @@ export const sirkuYerlesim = function (page: HTMLElement): number {
       tr.style.height = '';
       Array.prototype.forEach.call(tr.cells, function (td: HTMLElement) { td.style.height = ''; td.style.maxHeight = ''; });
     });
-    var twH = tw.getBoundingClientRect().height;
+    // offsetHeight dönüşümden (önizlemede küçültme) etkilenmez; konum karşılaştırmaları aynı oranda ölçeklendiği için doğru kalır
+    var twH = tw.offsetHeight;
     olculdu = twH >= 100;
     if (!olculdu) twH = 840;
-    var hThead = table.tHead ? table.tHead.getBoundingClientRect().height : 0;
+    var hThead = table.tHead ? table.tHead.offsetHeight : 0;
     var avail = Math.max(0, twH - hThead - 4);
     var n = parseInt(table.getAttribute('data-rows') || '0', 10) || satirlar.length || 1;
     var h = Math.floor((avail / n) * 10) / 10;
@@ -166,7 +167,7 @@ export function yazdir(kartlar: HTMLElement[], css: string) {
   const bosArka = '<section class="sheet bos-arka"><div class="paper"><div class="page"></div></div></section>';
   const parcalar: string[] = [];
   kartlar.forEach((k, i) => {
-    parcalar.push(k.outerHTML.replace(/<script[\s\S]*?<\/script>/gi, ''));
+    parcalar.push(k.outerHTML.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/--olcek:\s*[\d.]+;?/g, ''));
     const n = k.querySelectorAll('.page').length || 1;
     if (kartlar.length > 1 && i < kartlar.length - 1 && n % 2 === 1) parcalar.push(bosArka);
   });
