@@ -3,7 +3,7 @@
 /** Kişisel hesap formları: giriş, öğrenci ve hoca hesabı oluşturma, şifre değiştirme, KVKK onayı (üç ekran ortak). */
 import { startTransition, useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { cikisIslemi, girisIslemi, hocaKayitIslemi, kvkkOnayIslemi, ogrenciKayitIslemi, sifreDegistirIslemi, type GirisDurumu } from '@/app/giris-islemleri';
+import { cikisIslemi, girisIslemi, hocaKayitIslemi, kvkkOnayIslemi, ogrenciKayitIslemi, ogrenciSifreSifirlaIslemi, sifreDegistirIslemi, type GirisDurumu } from '@/app/giris-islemleri';
 import { KVKK_BASLIK, KVKK_BOLUMLER, KVKK_GIRIS, KVKK_ONAY_METNI } from '@/lib/kvkk';
 import type { Sayfa } from '@/lib/oturum';
 
@@ -138,6 +138,22 @@ export function OgrenciKayitFormu() {
   );
 }
 
+export function OgrenciSifreSifirlaFormu() {
+  const [d, gonder, bekliyor] = useActionState<GirisDurumu, FormData>(ogrenciSifreSifirlaIslemi, { mesaj: '' });
+  if (d.ok) return <div className="hf"><div className="hf-mesaj ok" role="status">{d.mesaj}</div></div>;
+  return (
+    <form onSubmit={gonderici(gonder)} className="hf">
+      <div className="hf-not" style={{ fontSize: 14 }}>Öğrenci numaranı ve TC kimlik numaranın son 6 hanesini yazarak yeni şifre belirle.</div>
+      <div><label htmlFor="ssNo">Öğrenci numarası</label><input id="ssNo" name="no" type="text" inputMode="numeric" autoComplete="username" required autoFocus /></div>
+      <div><label htmlFor="ssTc">TC kimlik numaranın son 6 hanesi</label><input id="ssTc" name="tc" type="text" inputMode="numeric" maxLength={6} autoComplete="off" required /></div>
+      <div><label htmlFor="ssYeni">Yeni şifre</label><input id="ssYeni" name="yeni" type="password" autoComplete="new-password" minLength={8} required /><div className="hf-not">En az 8 karakter; yalnızca rakam olmasın.</div></div>
+      <div><label htmlFor="ssTekrar">Yeni şifre (tekrar)</label><input id="ssTekrar" name="tekrar" type="password" autoComplete="new-password" minLength={8} required /></div>
+      <button className="hf-gonder" type="submit" disabled={bekliyor}>{bekliyor ? 'Kontrol ediliyor…' : 'Şifreyi sıfırla'}</button>
+      <Mesaj d={d} />
+    </form>
+  );
+}
+
 export function HocaKayitFormu({ hocaAdlari }: { hocaAdlari: string[] }) {
   const [d, gonder, bekliyor] = useActionState<GirisDurumu, FormData>(hocaKayitIslemi, { mesaj: '' });
   if (d.ok) return <div className="hf"><div className="hf-mesaj ok" role="status">{d.mesaj}</div></div>;
@@ -198,16 +214,17 @@ export function KvkkOnayFormu() {
 }
 
 /** Giriş ve hesap oluşturma sekmeleri. */
-export function GirisVeKayit({ giris, kayit, kayitEtiket = 'Hesap oluştur' }: { giris: React.ReactNode; kayit: React.ReactNode; kayitEtiket?: string }) {
-  const [sekme, setSekme] = useState<'giris' | 'kayit'>('giris');
+export function GirisVeKayit({ giris, kayit, kayitEtiket = 'Hesap oluştur', unuttum }: { giris: React.ReactNode; kayit: React.ReactNode; kayitEtiket?: string; unuttum?: React.ReactNode }) {
+  const [sekme, setSekme] = useState<'giris' | 'kayit' | 'unuttum'>('giris');
   return (
     <>
       <style>{HF_CSS}</style>
       <div className="hf-sekme" role="tablist">
         <button type="button" role="tab" aria-selected={sekme === 'giris'} onClick={() => setSekme('giris')}>Giriş yap</button>
         <button type="button" role="tab" aria-selected={sekme === 'kayit'} onClick={() => setSekme('kayit')}>{kayitEtiket}</button>
+        {unuttum && <button type="button" role="tab" aria-selected={sekme === 'unuttum'} onClick={() => setSekme('unuttum')}>Şifremi unuttum</button>}
       </div>
-      {sekme === 'giris' ? giris : kayit}
+      {sekme === 'giris' ? giris : sekme === 'kayit' ? kayit : unuttum}
     </>
   );
 }

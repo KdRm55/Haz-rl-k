@@ -10,7 +10,7 @@ import { cookies, headers } from 'next/headers';
 import { and, count, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import { vt, schema } from '@/db';
 import { KullaniciHatasi, YetkiHatasi } from './hata';
-import { adSoyadNorm, epostaNorm, sifreDenetle, TC_HANE, type HesapTuru } from './hesap-kurallari';
+import { adSoyadNorm, epostaNorm, sifreDenetle, tc6Eslesir, TC_HANE, type HesapTuru } from './hesap-kurallari';
 import { kodDogru, kodOzeti } from './kod';
 import { KVKK_SURUM } from './kvkk';
 import { basNorm } from './metin';
@@ -191,6 +191,35 @@ export async function ogrenciKayit(noHam: string, tcHam: string, sifre: string, 
   await cerezYaz(u.id, u.oturumSurumu);
   await islemKaydet('Hesap oluşturma', `Öğrenci ${no} (KVKK onayı ${KVKK_SURUM})`, u.adSoyad);
   return { ok: true, rol: 'ogrenci' };
+}
+
+/**
+ * Öğrenci "şifremi unuttum": öğrenci numarası + kayıttaki TC son 6 hanesi doğrulanırsa yeni şifre belirlenir.
+ * Açık oturumlar kapanır; giriş otomatik yapılmaz. Hatalı denemeler sınırlıdır; hesap yokluğu ile TC hatası aynı mesajı verir.
+ */
+export async function ogrenciSifreSifirla(noHam: string, tcHam: string, yeni: string, tekrar: string): Promise<{ ok: boolean; mesaj: string }> {
+  const no = String(noHam ?? '').replace(/\s+/g, '').slice(0, 20);
+  const tc = String(tcHam ?? '').replace(/\D/g, '');
+  if (!no) return { ok: false, mesaj: 'Öğrenci numaranı yaz.' };
+  if (tc.length !== TC_HANE) return { ok: false, mesaj: `TC kimlik numaranın son ${TC_HANE} hanesini yaz.` };
+  try { sifreDenetle(yeni, tekrar); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
+  let sinir;
+  try { sinir = await denemeSiniri('sifirla:' + no); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
+  const k = schema.kullanicilar, db = vt();
+  const [u] = await db.select().from(k).where(and(eq(k.ogrenciNo, no), eq(k.tur, 'ogrenci')));
+  const [o] = u ? await db.select().from(schema.ogrenciler).where(eq(schema.ogrenciler.no, no)) : [];
+  if (u && o && !o.tc6) return { ok: false, mesaj: 'Kaydında TC bilgisi yok, şifreni buradan sıfırlayamazsın. İdareye başvur.' };
+  let dogru = false;
+  try { dogru = !!u && !!o && tc6Eslesir(o.tc6, tc, tcOzeti); } catch (e) { return { ok: false, mesaj: (e as Error).message }; }
+  if (!dogru) {
+    await sinir.hatali();
+    return { ok: false, mesaj: 'Öğrenci numarası ya da TC bilgisi hatalı. Sorun sürerse idareye başvur.' };
+  }
+  if (u.durum !== 'aktif') return { ok: false, mesaj: 'Bu hesap kapatılmış. Yöneticiyle görüşün.' };
+  await sinir.temizle();
+  await db.update(k).set({ sifreOzeti: kodOzeti(yeni), sifreDegistirmeli: false, oturumSurumu: sql`${k.oturumSurumu} + 1` }).where(eq(k.id, u.id));
+  await islemKaydet('Şifre sıfırlama', 'Öğrenci kendi şifresini sıfırladı', u.adSoyad || no);
+  return { ok: true, mesaj: 'Şifren değiştirildi. Yeni şifrenle giriş yapabilirsin.' };
 }
 
 /** Öğretim elemanı: hesap açar, yönetici onaylayana kadar giriş yapamaz. */

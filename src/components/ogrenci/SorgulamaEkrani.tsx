@@ -1,6 +1,6 @@
 'use client';
 
-import { GirisFormu, GirisVeKayit, HesapCubugu, HF_CSS, KvkkOnayFormu, OgrenciKayitFormu, SifreDegistirFormu } from '@/components/HesapFormlari';
+import { GirisFormu, GirisVeKayit, HesapCubugu, HF_CSS, KvkkOnayFormu, OgrenciKayitFormu, OgrenciSifreSifirlaFormu, SifreDegistirFormu } from '@/components/HesapFormlari';
 import { Logo } from '@/components/Logo';
 import type { Duyuru, SorguSonucu } from '@/lib/tipler';
 import { DuyuruListesi } from './DuyuruListesi';
@@ -26,7 +26,7 @@ export function OgrenciGiris({ duyurular }: { duyurular: Duyuru[] }) {
         <Ust duyurular={duyurular} />
         <h1>Öğrenci girişi</h1>
         <p className="subtitle">Sınıfını, ders programını, sınavlarını ve devamsızlığını görmek için hesabınla gir. İlk kez kullanıyorsan önce hesap oluştur.</p>
-        <GirisVeKayit giris={<GirisFormu sayfa="ogrenci" />} kayit={<OgrenciKayitFormu />} />
+        <GirisVeKayit giris={<GirisFormu sayfa="ogrenci" />} kayit={<OgrenciKayitFormu />} unuttum={<OgrenciSifreSifirlaFormu />} />
       </main>
     </div>
   );

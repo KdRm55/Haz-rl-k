@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { cikisYap, girisYap, hocaKayit, kvkkOnayla, ogrenciKayit, sifreDegistir, type Sayfa } from '@/lib/oturum';
+import { cikisYap, girisYap, hocaKayit, kvkkOnayla, ogrenciKayit, ogrenciSifreSifirla, sifreDegistir, type Sayfa } from '@/lib/oturum';
 
 export type GirisDurumu = { mesaj: string; ok?: boolean };
 const YOL: Record<Sayfa, string> = { ogrenci: '/', hoca: '/hoca', yonetim: '/yonetim' };
@@ -31,6 +31,10 @@ export async function ogrenciKayitIslemi(_onceki: GirisDurumu, form: FormData): 
   });
   if (r.ok) revalidatePath('/');
   return r;
+}
+
+export async function ogrenciSifreSifirlaIslemi(_onceki: GirisDurumu, form: FormData): Promise<GirisDurumu> {
+  return guvenli(() => ogrenciSifreSifirla(al(form, 'no'), al(form, 'tc'), al(form, 'yeni'), al(form, 'tekrar')));
 }
 
 export async function hocaKayitIslemi(_onceki: GirisDurumu, form: FormData): Promise<GirisDurumu> {
