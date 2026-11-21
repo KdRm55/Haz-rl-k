@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { donemSonuclariIslemi } from '@/app/ogrenci-islemleri';
+import { donemSonuclariIslemi, optiklerimIslemi } from '@/app/ogrenci-islemleri';
+import type { OgrenciOptigi } from '@/lib/optik-yonetim';
 import type { DonemSinaviBilgisi, DonemSonucu, SinavBilgisi, SinavYeriBilgisi } from '@/lib/tipler';
 import { type Bulunan, type SinavOgesi } from './sinav-listesi';
 export { sinavListesi } from './sinav-listesi';
@@ -65,6 +66,56 @@ function DonemPuanlari({ s, sonuclar, setSonuclar }: { s: DonemSinaviBilgisi; so
   );
 }
 
+/** Yayınlanmış optik: öğrencinin işaretleri, kendi kitapçığının cevap anahtarı, doğru/yanlış ve tarama görüntüsü. */
+function OptikKarti({ donemKod }: { donemKod: string }) {
+  const [optikler, setOptikler] = useState<OgrenciOptigi[] | null>(null);
+  const [mesaj, setMesaj] = useState('');
+  useEffect(() => {
+    let iptal = false;
+    optiklerimIslemi().then(r => { if (iptal) return; if (r.ok) setOptikler(r.optikler); else setMesaj(r.mesaj); });
+    return () => { iptal = true; };
+  }, []);
+  const liste = (optikler ?? []).filter(o => o.donemKod === donemKod);
+  if (mesaj) return <div className="sn-bolum"><div className="bl-bos" role="status">{mesaj}</div></div>;
+  if (!liste.length) return null;
+  return (
+    <>{liste.map(o => (
+      <div className="sn-bolum" key={o.kod}>
+        <div className="sn-bolum-baslik">Optik ve cevap anahtarı · {o.ders}</div>
+        {o.not && (
+          <div className="opt-ozet">
+            <div><b>{o.not.dogru}</b><span>Doğru</span></div><div><b>{o.not.yanlis}</b><span>Yanlış</span></div>
+            <div><b>{o.not.bos}</b><span>Boş</span></div><div><b>{puanYaz(o.not.puan)}</b><span>Puan</span></div>
+          </div>
+        )}
+        <div className="ds-not" style={{ marginTop: 0, marginBottom: 8 }}>Kitapçık türün: <b>{o.kitapcik}</b></div>
+        <table className="opt-tablo">
+          <thead><tr><th>Soru</th><th>Cevabın</th><th>Doğru cevap</th><th></th></tr></thead>
+          <tbody>{o.anahtar.split('').map((d, i) => {
+            const c = o.cevaplar[i] ?? '-', iptal = d === '-', dogru = iptal || c === d, bos = c === '-';
+            return (
+              <tr key={i} className={!dogru && !bos ? 'opt-hatali' : ''}>
+                <td>{i + 1}</td>
+                <td className={bos ? 'opt-bos' : dogru ? 'opt-dogru' : 'opt-yanlis'}>{bos ? 'Boş' : c === 'X' ? 'Çoklu' : c}</td>
+                <td>{iptal ? 'İptal' : d}</td>
+                <td>{iptal ? '✓' : dogru ? '✓' : bos ? '–' : '✗'}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+        <div className="ds-not">İptal edilen sorular herkese doğru sayılır.</div>
+        {o.gorsel && (
+          <details className="dv-ders" style={{ marginTop: 10 }}>
+            <summary>Optik kâğıdımı göster</summary>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="opt-gorsel" src={`/optik-gorsel/${o.kod}/${o.no}`} alt="Optik cevap kâğıdım" loading="lazy" />
+          </details>
+        )}
+      </div>
+    ))}</>
+  );
+}
+
 function SinavDetayi({ s, r, geri }: { s: SinavOgesi; r: Bulunan; geri: () => void }) {
   const [sonuclar, setSonuclar] = useState<Extract<DonemSonucu, { ok: true }> | null>(null);
   return (
@@ -91,6 +142,7 @@ function SinavDetayi({ s, r, geri }: { s: SinavOgesi; r: Bulunan; geri: () => vo
             )}
           </div>
           {s.tip === 'donem' && <div className="sn-bolum"><div className="sn-bolum-baslik">Puanlarım</div><DonemPuanlari s={s.s} sonuclar={sonuclar} setSonuclar={setSonuclar} /></div>}
+          {s.tip === 'donem' && <OptikKarti donemKod={s.s.kod} />}
           {s.tip === 'yer' && s.sv && <div className="sn-bolum"><div className="sn-bolum-baslik">Puanlarım</div>{MuafiyetKarti({ sv: s.sv, tur: 'sinif' }) ?? <div className="bl-bos">Sonucun henüz açıklanmadı.</div>}</div>}
         </>
       )}

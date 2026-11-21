@@ -13,6 +13,7 @@ import { HesaplarSekmesi } from './HesaplarSekmesi';
 import { YonetimKabuk } from './Kabuk';
 import { KontrolSekmesi } from './KontrolSekmesi';
 import { OgrencilerSekmesi } from './OgrencilerSekmesi';
+import { OptikSekmesi } from './OptikSekmesi';
 import { OturumDustu } from './ortak';
 import { ProgramSekmesi } from './ProgramSekmesi';
 import { SinavSekmesi } from './SinavSekmesi';
@@ -23,7 +24,7 @@ import { SinifOlusturmaSekmesi } from './SinifOlusturmaSekmesi';
 import { YoklamaSekmesi } from './YoklamaSekmesi';
 
 const SEKMELER = [
-  ['ogrenci', 'Öğrenci listesi'], ['aktarim', 'Liste yükle'], ['sinav', 'Sınav ve muafiyet'], ['olustur', 'Sınıf oluşturma'], ['degisim', 'Sınıf değişikliği'], ['donem', 'Dönem sınavları'], ['syer', 'Sınav yerleri'], ['yoklama', 'Yoklama'], ['sinif', 'Sınıflar'], ['program', 'Ders programı'],
+  ['ogrenci', 'Öğrenci listesi'], ['aktarim', 'Liste yükle'], ['sinav', 'Sınav ve muafiyet'], ['olustur', 'Sınıf oluşturma'], ['degisim', 'Sınıf değişikliği'], ['donem', 'Dönem sınavları'], ['syer', 'Sınav yerleri'], ['optik', 'Optikler'], ['yoklama', 'Yoklama'], ['sinif', 'Sınıflar'], ['program', 'Ders programı'],
   ['duyuru', 'Duyurular'], ['ogrgor', 'Öğrenci ekranı'], ['hesap', 'Kullanıcılar'], ['ayar', 'Ayarlar'], ['kontrol', 'Sistem kontrolü']
 ] as const;
 type Sekme = (typeof SEKMELER)[number][0];
@@ -56,6 +57,7 @@ export function YonetimEkrani({ ozet, kim }: { ozet: { ogrenci: number; sinif: n
         {sekme === 'degisim' && <SinifDegisimSekmesi degisti={ozetYenile} />}
         {sekme === 'donem' && <DonemSekmesi />}
         {sekme === 'syer' && <SinavYeriSekmesi />}
+        {sekme === 'optik' && <OptikSekmesi />}
         {sekme === 'yoklama' && <YoklamaSekmesi />}
         {sekme === 'sinif' && <SiniflarSekmesi degisti={ozetYenile} />}
         {sekme === 'program' && <ProgramSekmesi />}

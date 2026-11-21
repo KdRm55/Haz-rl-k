@@ -10,6 +10,7 @@ import * as sy from '@/lib/sinav-yonetim';
 import * as sn from '@/lib/siniflandirma';
 import * as y from '@/lib/yonetim';
 import * as hs from '@/lib/hesaplar';
+import * as oy from '@/lib/optik-yonetim';
 import * as yk from '@/lib/yoklama';
 import { yedekOzeti } from '@/lib/yedek';
 
@@ -63,6 +64,18 @@ export async function yayinlaIslemi(ac: boolean) { return sar(() => sy.yayinla(a
 export async function puanOnizleIslemi(satirlar: string[][], bas: number | null) { return sar(() => sy.puanOnizle(satirlar, bas)); }
 export async function puanFarkIslemi(v: sy.PuanVerisi) { return sar(() => sy.puanFark(v)); }
 export async function puanUygulaIslemi(v: sy.PuanVerisi) { return sar(() => sy.puanUygula(v)); }
+
+/* Optik cevap kâğıtları */
+export async function optikDurumIslemi() { return sar(() => oy.optikDurum()); }
+export async function optikSetOlusturIslemi(v: { ad: string; donemKod: string; ders: string }) { return sar(() => oy.optikSetOlustur(v)); }
+export async function optikSetSilIslemi(kod: string) { return sar(() => oy.optikSetSil(kod)); }
+export async function optikAnahtarKaydetIslemi(kod: string, satirlar: string[][], ceza: string) { return sar(() => oy.optikAnahtarKaydet(kod, satirlar, ceza)); }
+export async function optikYayinIslemi(kod: string, ac: boolean) { return sar(() => oy.optikYayin(kod, ac)); }
+export async function optikEslestirIslemi(karekodlar: string[]) { return sar(() => oy.optikEslestir(karekodlar)); }
+export async function optikKaydetIslemi(v: oy.OptikGirdisi) { return sar(() => oy.optikKaydet(v)); }
+export async function optikElleKaydetIslemi(kod: string, metin: string) { return sar(() => oy.optikElleKaydet(kod, metin)); }
+export async function optikSonuclarIslemi(kod: string) { return sar(() => oy.optikSonuclar(kod)); }
+export async function optikPuanYazIslemi(kod: string, uzerineYaz: boolean) { return sar(() => oy.optikPuanYaz(kod, uzerineYaz)); }
 
 /* Sınıf oluşturma ve sınıf değişikliği */
 export async function taslakDurumuIslemi() { return sar(() => sn.taslakDurumu()); }

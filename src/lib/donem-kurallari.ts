@@ -158,6 +158,7 @@ export const SY_ALIAS = {
   salon: ['SINAV SALONU', 'SALON', 'SALON ADI', 'DERSLIK', 'SINIF SALON'],
   sira: ['SIRA NO', 'SIRANO', 'SIRA NUMARASI', 'OTURMA SIRASI', 'KOLTUK NO', 'MASA NO'],
   kitapcik: ['KITAPCIK TURU', 'KITAPCIK', 'KITAPCIK TIPI'],
+  karekod: ['KAREKOD', 'KARE KOD', 'QR', 'QR KOD', 'BARKOD'],
   sinavAdi: ['SINAV ADI', 'SINAV'],
   sinavKodu: ['SINAV KODU'],
   tarih: ['SINAV TARIHI', 'TARIH'],
@@ -183,7 +184,7 @@ export function syTarih(v: unknown): string {
   return s;
 }
 
-export type SyKayit = { satir: number; no: string; adi: string; soyadi: string; salon: string; sira: string; kitapcik: string };
+export type SyKayit = { satir: number; no: string; adi: string; soyadi: string; salon: string; sira: string; kitapcik: string; karekod: string };
 
 /** Dosya satırlarından kayıtları ve denetim raporunu çıkarır. ogrenci: sistemdeki kayıtlı öğrenciler. */
 export function syKayitlariCikar(dosya: string[][], bas: number, e: SyEslesme, ogrenci: Map<string, { adi: string; soyadi: string; durum: string }>) {
@@ -210,7 +211,7 @@ export function syKayitlariCikar(dosya: string[][], bas: number, e: SyEslesme, o
     (['sinavAdi', 'sinavKodu', 'saat', 'yer'] as const).forEach(k => { const v = g(row, e[k]); if (v) meta[k][v] = (meta[k][v] ?? 0) + 1; });
     const t = syTarih(e.tarih > -1 ? row[e.tarih] : '');
     if (t) meta.tarih[t] = (meta.tarih[t] ?? 0) + 1;
-    kayit.push({ satir: dSatir, no, adi, soyadi, salon, sira, kitapcik: g(row, e.kitapcik) });
+    kayit.push({ satir: dSatir, no, adi, soyadi, salon, sira, kitapcik: g(row, e.kitapcik), karekod: g(row, e.karekod).replace(/\s+/g, '').replace(/\.0+$/, '') });
   }
   // Aynı numara farklı salon/sırada → hiçbiri alınmaz; birebir aynıysa bir kez alınır
   const grup = new Map<string, SyKayit[]>();

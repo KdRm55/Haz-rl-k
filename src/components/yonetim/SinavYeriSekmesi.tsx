@@ -12,7 +12,7 @@ type Liste = SyDurum['listeler'][number];
 type Onizleme = Extract<Awaited<ReturnType<typeof syOnizleIslemi>>, { ok: true }>['veri'];
 const ALANLAR = [
   ['no', 'Öğrenci No *'], ['salon', 'Sınav salonu *'], ['sira', 'Sıra no'], ['adi', 'Adı'], ['soyadi', 'Soyadı'], ['adSoyad', 'Adı Soyadı (tek sütun)'],
-  ['kitapcik', 'Kitapçık türü'], ['sinavAdi', 'Sınav adı'], ['sinavKodu', 'Sınav kodu'], ['tarih', 'Sınav tarihi'], ['saat', 'Sınav saati'], ['yer', 'Sınav yeri (bina)']
+  ['kitapcik', 'Kitapçık türü'], ['karekod', 'Karekod (optik eşleştirme)'], ['sinavAdi', 'Sınav adı'], ['sinavKodu', 'Sınav kodu'], ['tarih', 'Sınav tarihi'], ['saat', 'Sınav saati'], ['yer', 'Sınav yeri (bina)']
 ] as const;
 const SABLON_BASLIK = ['Öğrenci No', 'Adı', 'Soyadı', 'Sınıf', 'Sınav Salonu', 'Sıra No', 'Kitapçık Türü', 'Sınav Adı', 'Sınav Tarihi', 'Sınav Saati', 'Sınav Yeri'];
 const trIso = (t: string) => { const m = String(t || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };

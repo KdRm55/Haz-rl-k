@@ -235,8 +235,44 @@ export const sinavYeriKayitlari = pgTable('sinav_yeri_kayitlari', {
   soyadi: text('soyadi').notNull().default(''),
   salon: text('salon').notNull(),
   sira: text('sira').notNull().default(''),
-  kitapcik: text('kitapcik').notNull().default('')
-}, t => [primaryKey({ columns: [t.listeKod, t.no] }), index('sinav_yeri_kayitlari_no_idx').on(t.no)]).enableRLS();
+  kitapcik: text('kitapcik').notNull().default(''),
+  karekod: text('karekod').notNull().default('')   // optikteki QR metni (kitapçık no + sınav kodu + ID); optik eşleştirmede kullanılır
+}, t => [primaryKey({ columns: [t.listeKod, t.no] }), index('sinav_yeri_kayitlari_no_idx').on(t.no), index('sinav_yeri_kayitlari_karekod_idx').on(t.karekod)]).enableRLS();
+
+/* ---------- Optik cevap kâğıtları ---------- */
+/** Bir dönem sınavı dersinin optik seti: cevap anahtarı (kitapçık → cevap dizisi; "-" iptal soru) ve yayın durumu. */
+export const optikSetleri = pgTable('optik_setleri', {
+  kod: text('kod').primaryKey(),   // "O1", "O2" …
+  ad: text('ad').notNull(),
+  donemKod: text('donem_kod').notNull(),
+  ders: text('ders').notNull(),
+  soruSayisi: integer('soru_sayisi').notNull().default(0),
+  yanlisCezasi: text('yanlis_cezasi').notNull().default('0'),   // her yanlış kaç doğruyu götürür: "0", "0.25" …
+  anahtar: jsonb('anahtar').$type<Record<string, string>>().notNull().default({}),
+  yayinda: boolean('yayinda').notNull().default(false),
+  olusturma: timestamp('olusturma', { withTimezone: true }).notNull().defaultNow()
+}).enableRLS();
+
+/** Okunan optik: öğrencinin işaretleri (50 karakter: A–E, "-" boş, "X" çoklu işaret). Puan anahtardan her seferinde hesaplanır. */
+export const optikKayitlari = pgTable('optik_kayitlari', {
+  setKod: text('set_kod').notNull().references(() => optikSetleri.kod, { onDelete: 'cascade' }),
+  no: text('no').notNull(),
+  adSoyad: text('ad_soyad').notNull().default(''),
+  kitapcik: text('kitapcik').notNull(),
+  cevaplar: text('cevaplar').notNull(),
+  kaynak: text('kaynak').notNull().default('QR'),   // QR (okunan) | Elle
+  uyari: text('uyari').notNull().default(''),       // okuma uyarıları (çoklu işaret, zayıf işaret…)
+  gorsel: boolean('gorsel').notNull().default(false),
+  zaman: timestamp('zaman', { withTimezone: true }).notNull().defaultNow()
+}, t => [primaryKey({ columns: [t.setKod, t.no] })]).enableRLS();
+
+/** Optik görüntüleri ayrı tutulur (liste sorguları hafif kalsın); kişisel veridir, yalnızca sahibi ve yönetici görür. */
+export const optikGorselleri = pgTable('optik_gorselleri', {
+  setKod: text('set_kod').notNull().references(() => optikSetleri.kod, { onDelete: 'cascade' }),
+  no: text('no').notNull(),
+  turu: text('turu').notNull().default('image/jpeg'),
+  veri: text('veri').notNull()   // base64
+}, t => [primaryKey({ columns: [t.setKod, t.no] })]).enableRLS();
 
 /* ---------- Yoklama ---------- */
 /** Bir ders oturumunun yoklaması (tarih + sınıf + saat + ders; 2 ders saati). Listeler öğrenci numaralarıdır. */

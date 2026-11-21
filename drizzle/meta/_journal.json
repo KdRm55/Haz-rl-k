@@ -78,6 +78,13 @@
       "when": 1793480137774,
       "tag": "0010_hoca_dersleri",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795254646537,
+      "tag": "0011_optik",
+      "breakpoints": true
     }
   ]
 }

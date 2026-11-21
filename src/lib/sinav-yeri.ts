@@ -96,7 +96,7 @@ async function listeYaz(tx: Db, r: SyKayitlari, deger: SyMeta & { donemDers?: st
     await tx.delete(schema.sinavYeriKayitlari).where(eq(schema.sinavYeriKayitlari.listeKod, kod));
   } else await tx.insert(schema.sinavYeriListeleri).values({ kod, ...set, yayinda: false });
   for (let i = 0; i < r.kayit.length; i += 500) {
-    await tx.insert(schema.sinavYeriKayitlari).values(r.kayit.slice(i, i + 500).map(x => ({ listeKod: kod, no: x.no, adi: x.adi, soyadi: x.soyadi, salon: x.salon, sira: x.sira, kitapcik: x.kitapcik })));
+    await tx.insert(schema.sinavYeriKayitlari).values(r.kayit.slice(i, i + 500).map(x => ({ listeKod: kod, no: x.no, adi: x.adi, soyadi: x.soyadi, salon: x.salon, sira: x.sira, kitapcik: x.kitapcik, karekod: x.karekod })));
   }
   return { kod, yenilendi: !!eski, ogrenci: r.kayit.length, salon: r.salonOzet.length, hatali: r.hatali.length };
 }
