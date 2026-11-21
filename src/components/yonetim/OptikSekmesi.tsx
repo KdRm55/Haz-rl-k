@@ -13,7 +13,7 @@ import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type Mesa
 
 type Set = OptikDurumu['setler'][number];
 type Eslesen = { no: string; ad: string; kitapcik: string; salon: string; sira: string };
-type Satir = DosyaOkumasi & { eslesen: Eslesen | null; tekrar: boolean };
+type Satir = DosyaOkumasi & { eslesen: Eslesen | null; tekrar: boolean; elleNo?: string; elleKit?: string };
 
 const sira = (a: string, b: string) => a.localeCompare(b, 'tr', { numeric: true });
 const bekle = () => new Promise<void>(r => setTimeout(r, 0));
@@ -100,7 +100,13 @@ function YuklemeBolumu({ s, mesaj, kaydedildi }: { s: Set; mesaj: (m: MesajDurum
     setIs('');
   }
 
+  /** Karekodu okunamayan (ya da listede olmayan) ama cevapları okunan optik: öğrenci numarası ve kitapçık elle verilirse kaydedilebilir. */
+  const elleGerekli = (x: Satir) => x.okuma.ok && !x.eslesen;
+  const elleGecerli = (x: Satir) => /^\d{6,12}$/.test(x.elleNo ?? '') && !!x.elleKit && !!s.anahtar[x.elleKit];
+  const guncelle = (i: number, y: Partial<Satir>) => setSatirlar(l => l.map((x, j) => (j === i ? { ...x, ...y } : x)));
   const durum = (x: Satir): { etiket: string; tur: 'ok' | 'uyari' | 'hata'; kaydedilir: boolean } => {
+    if (elleGerekli(x) && elleGecerli(x)) return { etiket: 'Elle eşleştirildi' + (x.uyari ? ' · ' + x.uyari : ''), tur: 'uyari', kaydedilir: true };
+    if (elleGerekli(x)) return { etiket: (x.karekod ? 'Karekod listede yok' : 'QR okunamadı') + ' — görüntüye bakıp öğrenci no ve kitapçığı yazın', tur: 'hata', kaydedilir: false };
     if (!x.okuma.ok) return { etiket: x.karekod ? 'Cevaplar okunamadı — elle kayıt gerekir' : 'QR ve cevaplar okunamadı — elle kayıt gerekir', tur: 'hata', kaydedilir: false };
     if (!x.karekod) return { etiket: 'QR okunamadı — elle kayıt gerekir', tur: 'hata', kaydedilir: false };
     if (!x.eslesen) return { etiket: 'Karekod sınav yeri listesinde yok', tur: 'hata', kaydedilir: false };
@@ -120,7 +126,9 @@ function YuklemeBolumu({ s, mesaj, kaydedildi }: { s: Set; mesaj: (m: MesajDurum
       const x = hazir[i];
       setIs(`Kaydediliyor… ${i + 1} / ${hazir.length}`);
       const o = x.okuma as Extract<DosyaOkumasi['okuma'], { ok: true }>;
-      const r = await cagir(optikKaydetIslemi({ setKod: s.kod, karekod: x.karekod, cevaplar: o.cevaplar, uyari: x.uyari, gorsel: x.gorsel, kaynak: 'QR' }));
+      const r = await cagir(optikKaydetIslemi(x.eslesen
+        ? { setKod: s.kod, karekod: x.karekod, cevaplar: o.cevaplar, uyari: x.uyari, gorsel: x.gorsel, kaynak: 'QR' }
+        : { setKod: s.kod, no: x.elleNo, kitapcik: x.elleKit, cevaplar: o.cevaplar, uyari: ('Karekod elle eşleştirildi. ' + x.uyari).trim(), gorsel: x.gorsel, kaynak: 'QR' }));
       if (r.ok) yazilan++; else hatalar.push(`${x.dosya}: ${r.hata}`);
     }
     setIs('');
@@ -153,12 +161,15 @@ function YuklemeBolumu({ s, mesaj, kaydedildi }: { s: Set; mesaj: (m: MesajDurum
               <thead><tr><th>Dosya</th><th>Öğrenci</th><th>Kit.</th><th>Cevaplar</th><th>D / Y / B</th><th>Puan</th><th>Durum</th></tr></thead>
               <tbody>{satirlar.map((x, i) => {
                 const d = durum(x), o = x.okuma.ok ? x.okuma : null;
-                const n = o && x.eslesen && s.anahtar[x.eslesen.kitapcik] ? optikNotu(o.cevaplar, s.anahtar[x.eslesen.kitapcik], Number(s.yanlisCezasi)) : null;
+                const kit = x.eslesen?.kitapcik ?? x.elleKit ?? '';
+                const n = o && kit && s.anahtar[kit] && (x.eslesen || elleGecerli(x)) ? optikNotu(o.cevaplar, s.anahtar[kit], Number(s.yanlisCezasi)) : null;
                 return (
                   <tr key={i} style={d.tur === 'hata' ? { background: 'rgba(180,35,24,.08)' } : d.tur === 'uyari' ? { background: 'rgba(200,140,0,.10)' } : undefined}>
                     <td>{x.dosya}</td>
-                    <td>{x.eslesen ? <>{x.eslesen.no}<br /><small>{x.eslesen.ad}</small></> : '—'}</td>
-                    <td>{x.eslesen?.kitapcik ?? ''}</td>
+                    <td>{x.eslesen ? <>{x.eslesen.no}<br /><small>{x.eslesen.ad}</small></> : elleGerekli(x)
+                      ? <input type="text" inputMode="numeric" placeholder="Öğrenci no" aria-label="Öğrenci numarası" style={{ width: 110 }} value={x.elleNo ?? ''} onChange={e => guncelle(i, { elleNo: e.target.value.replace(/\D/g, '') })} /> : '—'}</td>
+                    <td>{x.eslesen ? x.eslesen.kitapcik : elleGerekli(x)
+                      ? <select aria-label="Kitapçık" value={x.elleKit ?? ''} onChange={e => guncelle(i, { elleKit: e.target.value })}><option value="">—</option>{Object.keys(s.anahtar).sort().map(k => <option key={k} value={k}>{k}</option>)}</select> : ''}</td>
                     <td style={{ fontFamily: 'monospace' }}>{o ? o.cevaplar.slice(0, s.soruSayisi) : ''}</td>
                     <td>{n ? `${n.dogru} / ${n.yanlis} / ${n.bos}` : ''}</td>
                     <td><b>{n ? String(n.puan).replace('.', ',') : ''}</b></td>
