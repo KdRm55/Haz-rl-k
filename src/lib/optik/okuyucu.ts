@@ -13,10 +13,12 @@ export const SECENEKLER = 'ABCDE';
 /** Çerçevenin iç alanına oranla baloncuk düzeni (kâğıt şablonundan ölçüldü). */
 const DUZEN = { ilkX: 0.050, secenekAraligi: 0.0325, sutunAraligi: 0.1965, ilkY: 0.075, satirAraligi: 0.0900, yaricap: 0.0095 };
 const KOYU = 110;
+/** Bir baloncuğun işaretli sayılması için boş baloncuktan en az bu kadar koyu olması gerekir (gri düzeyi). */
+const ISARET_ESIGI = 42;
 
 export type Cerceve = { x0: number; x1: number; y0: number; y1: number };
 export type Okuma =
-  | { ok: true; cevaplar: string; bos: number; coklu: number[]; zayif: number[]; acilar: number; cerceve: Cerceve; taban: number; ters180?: boolean }
+  | { ok: true; cevaplar: string; bos: number; coklu: number[]; zayif: number[]; acilar: number; cerceve: Cerceve; taban: number; ters180?: boolean; olcum?: number[][] }
   | { ok: false; neden: string };
 
 /**
@@ -134,18 +136,24 @@ export function baloncukOlc(r: Gri, c: Cerceve): number[][] {
   return out;
 }
 
-/** Ölçümlerden cevap dizisi: işaretli = taban (boş baloncuk parlaklığı) − 60'tan koyu; 38–60 arası "zayıf" (elle kontrol). */
+/** Ölçümlerden cevap dizisi: işaretli = taban (boş baloncuk parlaklığı) − 42'den koyu. Silik işaret ve silinmiş leke "zayıf" olarak raporlanır. */
 export function cevapCoz(olcum: number[][]) {
   const hepsi = olcum.flat().sort((a, b) => a - b);
   const taban = hepsi[Math.floor(hepsi.length * 0.75)];   // işaretliler azınlıkta: üst çeyrek boş baloncuk parlaklığıdır
   let cevaplar = '', bos = 0;
   const coklu: number[] = [], zayif: number[] = [];
   olcum.forEach((satir, i) => {
-    const isaret = satir.map((v, k) => (v < taban - 60 ? k : -1)).filter(k => k > -1);
-    if (satir.some(v => v >= taban - 60 && v < taban - 38)) zayif.push(i + 1);
-    if (isaret.length === 0) { cevaplar += '-'; bos++; }
-    else if (isaret.length === 1) cevaplar += SECENEKLER[isaret[0]];
-    else { cevaplar += 'X'; coklu.push(i + 1); }
+    // Her baloncuğun boş baloncuğa göre koyuluğu (fark). Kuralın dayanağı 114 gerçek optiğin ölçümü:
+    // işaretlenmemiş en koyu baloncuk farkı ≤ 39, silik kurşun kalem işaretleri ≥ 46, normal işaretler ~ 100–130.
+    const fark = satir.map(v => taban - v);
+    const sirali = fark.map((f, k) => k).sort((a, b) => fark[b] - fark[a]);
+    const en = fark[sirali[0]], ikinci = fark[sirali[1]];
+    if (en < ISARET_ESIGI) { cevaplar += '-'; bos++; return; }
+    // İki belirgin işaret ve biri diğerinden çok koyu değilse: çoklu işaret. Biri belirgin, diğeri silik ise (silinmiş leke)
+    // koyu olan seçilir ve satır kontrol için işaretlenir.
+    if (ikinci >= ISARET_ESIGI && en - ikinci < 40) { cevaplar += 'X'; coklu.push(i + 1); return; }
+    cevaplar += SECENEKLER[sirali[0]];
+    if (en < 55 || ikinci >= ISARET_ESIGI) zayif.push(i + 1);   // çok silik işaret ya da leke: görüntüden kontrol edilmeli (hafif kalemle yapılmış 55–80 arası işaretler güvenle okunur)
   });
   return { cevaplar, bos, coklu, zayif, taban };
 }
@@ -161,8 +169,9 @@ export function optikOku(ham: Gri): Okuma {
     const b2 = hizala(ters(ham));
     if (b2) { ({ r, c, acilar } = b2); ters180 = true; }
   }
-  const x = cevapCoz(baloncukOlc(r, c));
-  return { ok: true, ...x, acilar, cerceve: c, ters180 };
+  const olcum = baloncukOlc(r, c);
+  const x = cevapCoz(olcum);
+  return { ok: true, ...x, olcum, acilar, cerceve: c, ters180 };
 }
 
 /** Eğikliği giderir ve çerçeveyi bulur. Açının işareti dönüşüm yönüne bağlı olduğundan her iki yön de denenir; en sağlam çerçeve seçilir. */

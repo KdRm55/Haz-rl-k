@@ -38,6 +38,23 @@ describe('optik okuyucu', () => {
     expect(c.cevaplar[4]).toBe('X');
     expect(c.coklu).toEqual([5]);
   });
+  it('silik işareti okur ve kontrol için işaretler; boş baloncuktaki harf gölgesini işaret saymaz', () => {
+    const olcum = Array.from({ length: 50 }, () => [245, 245, 245, 245, 245]);
+    olcum[0] = [245, 245, 198, 245, 245];   // silik C (fark 47)
+    olcum[1] = [245, 215, 245, 245, 245];   // harf gölgesi (fark 30): boş
+    const c = cevapCoz(olcum);
+    expect(c.cevaplar.slice(0, 2)).toBe('C-');
+    expect(c.zayif).toEqual([1]);
+    expect(c.coklu).toEqual([]);
+  });
+  it('silinmiş leke ile belirgin işaret birlikteyse belirgin olan seçilir ve satır kontrol edilir', () => {
+    const olcum = Array.from({ length: 50 }, () => [245, 245, 245, 245, 245]);
+    olcum[10] = [248, 247, 198, 130, 246];   // silinmiş C lekesi + belirgin D
+    const c = cevapCoz(olcum);
+    expect(c.cevaplar[10]).toBe('D');
+    expect(c.zayif).toEqual([11]);
+    expect(c.coklu).toEqual([]);
+  });
   it('griYap RGBA’yı griye çevirir', () => {
     expect(Array.from(griYap([255, 255, 255, 255, 0, 0, 0, 255], 2, 1).g)).toEqual([255, 0]);
     expect(cerceveBul).toBeTypeOf('function');
