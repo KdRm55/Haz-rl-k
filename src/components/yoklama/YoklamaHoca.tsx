@@ -10,6 +10,7 @@ import { YOKLAMA_HOCA_CSS } from './stil';
 import { OgrenciYoklamasi } from './OgrenciYoklamasi';
 import { YoklamaDokumu } from './YoklamaDokumu';
 import { Tarama } from './Tarama';
+import { HaftalikToplu } from './HaftalikToplu';
 
 const HOCA_ANAHTAR = 'hz_yok_hoca_v1';
 const SIRA_ANAHTAR = 'hz_yok_sira_v1';
@@ -153,6 +154,7 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
   const [ed, setEd] = useState<{ d: YoklamaEditoru; surum: number } | string | null>(null);
   const [edMesaj, setEdMesaj] = useState('');
   const [kirli, setKirli] = useState(false);
+  const [toplu, setToplu] = useState(0);   // 0 = kapalı; her açılışta artar (bileşen yeniden yüklensin diye)
   const [telafi, setTelafi] = useState({ sinif: '', ders: '', iso: '', saat: '' });
   const edRef = useRef<HTMLDivElement>(null);
 
@@ -176,6 +178,7 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
   useEffect(() => { if (ilk.current && hoca) { ilk.current = false; getir(true); } }, [hoca, getir]);
 
   async function ac(o: OturumGirdisi) {
+    setToplu(0);
     if (kirli && !confirm('Kaydedilmemiş değişiklikler var. Bu yoklamayı kaydetmeden kapatmak istiyor musunuz?')) return;
     setEd('Öğrenci listesi okunuyor…'); setEdMesaj('');
     const r = await yoklamaGetirIslemi(o);
@@ -197,6 +200,7 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
     h?.oturumlar.forEach(o => { if (!m.has(o.iso)) m.set(o.iso, []); m.get(o.iso)!.push(o); });
     return [...m.values()];
   }, [h]);
+  const haftalik = useMemo(() => (h ? h.oturumlar.filter(o => o.iso <= h.bugun || o.kayitli).map(o => ({ iso: o.iso, sinif: o.sinif, saat: o.saat, ders: o.ders, hoca: o.hoca, tur: o.tur })) : []), [h]);
   const secili = ed && typeof ed === 'object' ? ed.d.anahtar : '';
   const girilmedi = h ? h.oturumlar.filter(o => !o.kayitli && o.iso <= h.bugun).length : 0;
 
@@ -220,6 +224,10 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
         {h && h.oturumlar.length > 0 && (
           <>
             <div className="yk-ozet">{h.teacher} · {h.weekStart} haftası · {h.oturumlar.length} ders{girilmedi > 0 && <> · <strong style={{ color: '#8A5210' }}>{girilmedi} dersin yoklaması girilmedi</strong></>}</div>
+            <div style={{ margin: '10px 0' }}>
+              <button type="button" className="btn btn-secondary" disabled={!haftalik.length} onClick={() => { if (kirli && !confirm('Kaydedilmemiş değişiklikler var. Devam edilsin mi?')) return; setEd(null); setKirli(false); setToplu(s => s + 1); }}>
+                Tüm haftanın yoklamasını tek seferde gir ({haftalik.length} ders)</button>
+            </div>
             {gunler.map(l => (
               <div key={l[0].iso} className="yk-gun">
                 <h3>{l[0].gun} {l[0].tarih}</h3>
@@ -260,6 +268,8 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
       <OgrenciYoklamasi yetkiHatasi={yetkiHatasi} />
 
       <YoklamaDokumu hoca={hoca} yetkiHatasi={yetkiHatasi} />
+
+      {toplu > 0 && h && <HaftalikToplu key={toplu} oturumlar={haftalik} hoca={hoca} admin={admin} yetkiHatasi={yetkiHatasi} kapat={() => setToplu(0)} bitti={() => getir(true)} />}
 
       <div ref={edRef}>
         {edMesaj && !ed && <div className="yk-mesaj" style={{ padding: 0 }}><div className="ok">{edMesaj}</div></div>}
