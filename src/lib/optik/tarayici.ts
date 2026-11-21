@@ -65,6 +65,18 @@ function karekodOku(bmp: ImageBitmap): string {
   return '';
 }
 
+/** Dosyayı base64 parçalara böler (her parça 1,5 MB ham = 3'ün katı, parçalar art arda eklenince geçerli base64 olur). */
+export async function* base64Parcalari(f: Blob, parcaBayt = 1_500_000): AsyncGenerator<string> {
+  for (let bas = 0; bas < f.size; bas += parcaBayt) {
+    const url = await new Promise<string>((coz, red) => {
+      const r = new FileReader();
+      r.onload = () => coz(String(r.result)); r.onerror = () => red(r.error);
+      r.readAsDataURL(f.slice(bas, bas + parcaBayt));
+    });
+    yield url.slice(url.indexOf(',') + 1);
+  }
+}
+
 /** Elle girilen kayıtlara eklenecek görüntüyü küçültüp JPEG (data URL) yapar. */
 export async function optikGorseliHazirla(f: File): Promise<string> {
   const bmp = await createImageBitmap(f);

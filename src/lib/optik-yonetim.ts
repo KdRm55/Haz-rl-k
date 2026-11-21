@@ -26,8 +26,9 @@ async function setBul(db: Db, kod: string) {
 export async function optikDurum() {
   await yonetici();
   const db = vt();
-  const [setler, sayilar, donemler, dersler] = await Promise.all([
+  const [setler, kitapciklar, sayilar, donemler, dersler] = await Promise.all([
     db.select().from(schema.optikSetleri).orderBy(asc(schema.optikSetleri.olusturma)),
+    db.select({ set: schema.optikKitapciklari.setKod, kitapcik: schema.optikKitapciklari.kitapcik, ad: schema.optikKitapciklari.ad, boyut: schema.optikKitapciklari.boyut, tamam: schema.optikKitapciklari.tamam }).from(schema.optikKitapciklari),
     db.select({ set: schema.optikKayitlari.setKod, kaynak: schema.optikKayitlari.kaynak, n: sql<number>`count(*)::int` }).from(schema.optikKayitlari).groupBy(schema.optikKayitlari.setKod, schema.optikKayitlari.kaynak),
     db.select({ kod: schema.donemSinavlari.kod, ad: schema.donemSinavlari.ad }).from(schema.donemSinavlari).where(eq(schema.donemSinavlari.arsiv, false)).orderBy(asc(schema.donemSinavlari.olusturma)),
     db.select({ kod: schema.donemSinavDersleri.sinavKod, ders: schema.donemSinavDersleri.ders }).from(schema.donemSinavDersleri).orderBy(asc(schema.donemSinavDersleri.sira))
@@ -36,6 +37,7 @@ export async function optikDurum() {
     donemler: donemler.map(d => ({ ...d, dersler: dersler.filter(x => x.kod === d.kod).map(x => x.ders) })),
     setler: setler.map(s => ({
       kod: s.kod, ad: s.ad, donemKod: s.donemKod, ders: s.ders, soruSayisi: s.soruSayisi, yanlisCezasi: s.yanlisCezasi, anahtar: s.anahtar, yayinda: s.yayinda,
+      kitapciklar: kitapciklar.filter(x => x.set === s.kod && x.tamam).map(x => ({ kitapcik: x.kitapcik, ad: x.ad, boyut: x.boyut })).sort((a, b) => a.kitapcik.localeCompare(b.kitapcik)),
       kayit: sayilar.filter(x => x.set === s.kod).reduce((t, x) => t + x.n, 0), elle: sayilar.find(x => x.set === s.kod && x.kaynak === 'Elle')?.n ?? 0
     }))
   };
@@ -91,6 +93,67 @@ export async function optikYayin(kod: string, ac: boolean) {
   await vt().update(schema.optikSetleri).set({ yayinda: !!ac }).where(eq(schema.optikSetleri.kod, s.kod));
   await islemKaydet('Optik yayını', `${s.kod} "${s.ad}" ${ac ? 'öğrencilere yayınlandı' : 'gizlendi'}`);
   return { mesaj: ac ? 'Optikler ve cevap anahtarı öğrencilere açıldı. Her öğrenci yalnızca kendi optiğini görür.' : 'Optikler öğrencilerden gizlendi.', durum: await optikDurum() };
+}
+
+/* ---------- Soru kitapçıkları (PDF) ---------- */
+export const KITAPCIK_PDF_EN_COK = 15 * 1024 * 1024;   // bayt
+export type KitapcikParcasi = { setKod: string; kitapcik: string; ad: string; boyut: number; sira: number; toplam: number; parca: string };
+
+/**
+ * PDF parça parça (her parça ≤ ~2 MB base64) yüklenir; sunucu istek sınırını aşmamak için. İlk parça eski dosyanın yerine geçer,
+ * son parça geldiğinde dosya "tamam" olur ve öğrenciye (yayındaysa) kendi kitapçığı olarak gösterilir.
+ */
+export async function optikKitapcikParcasi(v: KitapcikParcasi) {
+  await yonetici();
+  const db = vt(), s = await setBul(db, v?.setKod);
+  const kit = String(v?.kitapcik ?? '').toUpperCase();
+  if (!/^[A-D]$/.test(kit)) throw new KullaniciHatasi('Kitapçık türü A, B, C ya da D olmalı.');
+  const sira = Number(v.sira), toplam = Number(v.toplam), boyut = Number(v.boyut), parca = String(v.parca ?? '');
+  if (!Number.isInteger(sira) || !Number.isInteger(toplam) || sira < 0 || sira >= toplam || toplam > 20) throw new KullaniciHatasi('Parça bilgisi geçersiz.');
+  if (!(boyut > 0) || boyut > KITAPCIK_PDF_EN_COK) throw new KullaniciHatasi(`PDF en çok ${Math.round(KITAPCIK_PDF_EN_COK / 1048576)} MB olabilir. Dosyayı küçültüp (görüntüleri sıkıştırıp) yeniden deneyin.`);
+  if (!/^[A-Za-z0-9+/=]+$/.test(parca) || parca.length > 2_200_000) throw new KullaniciHatasi('Dosya parçası geçersiz.');
+  const t = schema.optikKitapciklari;
+  if (sira === 0) {
+    if (!parca.startsWith('JVBERi0')) throw new KullaniciHatasi('Bu dosya PDF değil. Kitapçığı PDF olarak yükleyin.');   // "%PDF-" başlığı
+    const ad = String(v.ad ?? '').replace(/[\r\n]/g, ' ').slice(0, 150);
+    await db.insert(t).values({ setKod: s.kod, kitapcik: kit, ad, boyut, tamam: false, veri: parca })
+      .onConflictDoUpdate({ target: [t.setKod, t.kitapcik], set: { ad, boyut, tamam: false, veri: parca, zaman: new Date() } });
+  } else {
+    const [m] = await db.select({ tamam: t.tamam }).from(t).where(and(eq(t.setKod, s.kod), eq(t.kitapcik, kit)));
+    if (!m) throw new KullaniciHatasi('Yükleme baştan başlamalı.');
+    await db.update(t).set({ veri: sql`${t.veri} || ${parca}` }).where(and(eq(t.setKod, s.kod), eq(t.kitapcik, kit)));
+  }
+  if (sira === toplam - 1) {
+    const [{ uzunluk }] = await db.select({ uzunluk: sql<number>`length(${t.veri})::int` }).from(t).where(and(eq(t.setKod, s.kod), eq(t.kitapcik, kit)));
+    const beklenen = Math.floor(boyut / 3) * 4 + (boyut % 3 ? 4 : 0);   // base64 uzunluğu
+    if (uzunluk !== beklenen) { await db.delete(t).where(and(eq(t.setKod, s.kod), eq(t.kitapcik, kit))); throw new KullaniciHatasi('Dosya eksik ulaştı, yükleme iptal edildi. Yeniden deneyin.'); }
+    await db.update(t).set({ tamam: true }).where(and(eq(t.setKod, s.kod), eq(t.kitapcik, kit)));
+    await islemKaydet('Optik kitapçığı', `${s.kod} ${kit} kitapçığı yüklendi (${String(v.ad ?? '').slice(0, 80)}, ${Math.round(boyut / 1024)} KB)`);
+  }
+  return { tamam: sira === toplam - 1 };
+}
+
+export async function optikKitapcikSil(kod: string, kitapcik: string) {
+  await yonetici();
+  const s = await setBul(vt(), kod), kit = String(kitapcik ?? '').toUpperCase();
+  await vt().delete(schema.optikKitapciklari).where(and(eq(schema.optikKitapciklari.setKod, s.kod), eq(schema.optikKitapciklari.kitapcik, kit)));
+  await islemKaydet('Optik kitapçığı', `${s.kod} ${kit} kitapçığı silindi`);
+  return optikDurum();
+}
+
+/** Kitapçık PDF'i: yönetici hepsini; öğrenci yalnızca yayınlanmış setteki KENDİ kitapçığını görebilir. */
+export async function optikKitapcikPdf(kod: string, kitapcik: string) {
+  const o = await oturum();
+  if (!o || o.sifreDegistirmeli || !o.kvkkOnayli) throw new YetkiHatasi();
+  const db = vt(), kit = String(kitapcik ?? '').toUpperCase();
+  if (o.tur === 'ogrenci') {
+    const k = schema.optikKayitlari, s = schema.optikSetleri;
+    const [r] = await db.select({ kitapcik: k.kitapcik }).from(k).innerJoin(s, eq(k.setKod, s.kod)).where(and(eq(k.setKod, kod), eq(k.no, o.ogrenciNo), eq(s.yayinda, true)));
+    if (!r || r.kitapcik !== kit) throw new YetkiHatasi();
+  } else if (o.tur !== 'admin') throw new YetkiHatasi();
+  const t = schema.optikKitapciklari;
+  const [p] = await db.select({ ad: t.ad, veri: t.veri }).from(t).where(and(eq(t.setKod, kod), eq(t.kitapcik, kit), eq(t.tamam, true)));
+  return p ? { ad: p.ad, veri: Buffer.from(p.veri, 'base64') } : null;
 }
 
 /* ---------- Optik yükleme ---------- */
@@ -280,11 +343,14 @@ export async function optikOgrenci() {
   const db = vt();
   const k = schema.optikKayitlari, s = schema.optikSetleri;
   const satirlar = await db.select({ set: s, k }).from(k).innerJoin(s, eq(k.setKod, s.kod)).where(and(eq(k.no, o.ogrenciNo), eq(s.yayinda, true)));
+  const pdf = satirlar.length ? await db.select({ set: schema.optikKitapciklari.setKod, kitapcik: schema.optikKitapciklari.kitapcik }).from(schema.optikKitapciklari)
+    .where(and(inArray(schema.optikKitapciklari.setKod, satirlar.map(x => x.set.kod)), eq(schema.optikKitapciklari.tamam, true))) : [];
   return satirlar.map(({ set, k: kayit }) => {
     const anahtar = set.anahtar[kayit.kitapcik] ?? '';
     return {
       kod: set.kod, ad: set.ad, donemKod: set.donemKod, ders: set.ders, kitapcik: kayit.kitapcik, no: kayit.no,
       anahtar, cevaplar: cevapTamamla(kayit.cevaplar).slice(0, anahtar.length), gorsel: kayit.gorsel,
+      kitapcikPdf: pdf.some(p => p.set === set.kod && p.kitapcik === kayit.kitapcik),
       not: anahtar ? optikNotu(kayit.cevaplar, anahtar, Number(set.yanlisCezasi)) : null
     };
   });

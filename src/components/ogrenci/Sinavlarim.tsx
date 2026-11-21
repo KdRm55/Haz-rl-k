@@ -88,7 +88,8 @@ function OptikKarti({ donemKod }: { donemKod: string }) {
             <div><b>{o.not.bos}</b><span>Boş</span></div><div><b>{puanYaz(o.not.puan)}</b><span>Puan</span></div>
           </div>
         )}
-        <div className="ds-not" style={{ marginTop: 0, marginBottom: 8 }}>Kitapçık türün: <b>{o.kitapcik}</b></div>
+        <div className="ds-not" style={{ marginTop: 0, marginBottom: 8 }}>Kitapçık türün: <b>{o.kitapcik}</b>
+          {o.kitapcikPdf && <> · <a href={`/optik-kitapcik/${o.kod}/${o.kitapcik}`} target="_blank" rel="noopener noreferrer">Soru kitapçığımı aç (PDF)</a></>}</div>
         <table className="opt-tablo">
           <thead><tr><th>Soru</th><th>Cevabın</th><th>Doğru cevap</th><th></th></tr></thead>
           <tbody>{o.anahtar.split('').map((d, i) => {

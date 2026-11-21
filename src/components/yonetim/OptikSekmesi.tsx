@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  optikAnahtarKaydetIslemi, optikDurumIslemi, optikElleKaydetIslemi, optikEslestirIslemi, optikGorselEkleIslemi, optikKaydetIslemi, optikPuanYazIslemi,
+  optikAnahtarKaydetIslemi, optikDurumIslemi, optikElleKaydetIslemi, optikEslestirIslemi, optikGorselEkleIslemi, optikKaydetIslemi, optikKitapcikParcasiIslemi, optikKitapcikSilIslemi, optikPuanYazIslemi,
   optikSetOlusturIslemi, optikSetSilIslemi, optikSonuclarIslemi, optikYayinIslemi
 } from '@/app/yonetim/islemler';
 import { dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import { anahtarSablonSatirlari, optikNotu } from '@/lib/optik/kurallar';
-import { optikDosyasiOku, optikGorseliHazirla, type DosyaOkumasi } from '@/lib/optik/tarayici';
+import { base64Parcalari, optikDosyasiOku, optikGorseliHazirla, type DosyaOkumasi } from '@/lib/optik/tarayici';
 import type { OptikDurumu, OptikSonuclari } from '@/lib/optik-yonetim';
 import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
 
@@ -59,6 +59,62 @@ function AnahtarBolumu({ s, mesaj, yenile }: { s: Set; mesaj: (m: MesajDurumu) =
           </table>
         </div></div>
       )}
+    </div>
+  );
+}
+
+/* ---------- Soru kitapçıkları (PDF) ---------- */
+function KitapcikBolumu({ s, mesaj, yenile }: { s: Set; mesaj: (m: MesajDurumu) => void; yenile: () => void }) {
+  const cagir = useCagir();
+  const [is, setIs] = useState('');
+  const turler = Object.keys(s.anahtar).length ? Object.keys(s.anahtar).sort() : ['A', 'B', 'C', 'D'];
+
+  async function yukle(kit: string, f: File | undefined) {
+    if (!f) return;
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') { mesaj({ metin: 'Lütfen PDF dosyası seçin.', hata: true }); return; }
+    if (f.size > 15 * 1048576) { mesaj({ metin: 'PDF en çok 15 MB olabilir. Görüntüleri sıkıştırıp küçültün.', hata: true }); return; }
+    mesaj(null);
+    const toplam = Math.ceil(f.size / 1_500_000);
+    let sira = 0;
+    try {
+      for await (const parca of base64Parcalari(f)) {
+        setIs(`${kit} kitapçığı yükleniyor… %${Math.round(sira / toplam * 100)}`);
+        const r = await cagir(optikKitapcikParcasiIslemi({ setKod: s.kod, kitapcik: kit, ad: f.name, boyut: f.size, sira, toplam, parca }));
+        if (!r.ok) { mesaj({ metin: r.hata, hata: true }); return; }
+        sira++;
+      }
+      mesaj({ metin: `${kit} kitapçığı yüklendi (${f.name}).${s.yayinda ? ' Optikler yayında olduğu için ' + kit + ' kitapçığındaki öğrenciler hemen görebilir.' : ''}` });
+      yenile();
+    } catch (e) { mesaj({ metin: 'Yükleme başarısız: ' + (e instanceof Error ? e.message : String(e)), hata: true }); }
+    finally { setIs(''); }
+  }
+  async function sil(kit: string) {
+    if (!confirm(`${kit} kitapçığının PDF'i silinecek. Silinsin mi?`)) return;
+    const r = await cagir(optikKitapcikSilIslemi(s.kod, kit));
+    if (!r.ok) { mesaj({ metin: r.hata, hata: true }); return; }
+    mesaj({ metin: `${kit} kitapçığı silindi.` }); yenile();
+  }
+
+  return (
+    <div className="adim">
+      <div className="bolum-baslik">Soru kitapçıkları (PDF)</div>
+      <p className="aciklama">Her kitapçık türü için soru kitapçığının PDF&apos;ini yükleyin. Optikler yayınlandığında her öğrenci yalnızca <b>kendi kitapçık türünü</b> görür (örn. B kitapçığı olan öğrenci B&apos;yi). Dosya en çok 15 MB olabilir.</p>
+      {is && <Yukleniyor metin={is} />}
+      <div className="table-card"><div className="scroller">
+        <table>
+          <thead><tr><th>Kitapçık</th><th>Durum</th><th>PDF yükle / değiştir</th></tr></thead>
+          <tbody>{turler.map(k => {
+            const y = s.kitapciklar.find(x => x.kitapcik === k);
+            return (
+              <tr key={k}>
+                <td><b>{k}</b></td>
+                <td>{y ? <>{y.ad} ({Math.max(1, Math.round(y.boyut / 1024))} KB) · <a href={`/optik-kitapcik/${s.kod}/${k}`} target="_blank" rel="noopener noreferrer">aç</a> · <button type="button" className="btn-link" onClick={() => sil(k)}>sil</button></> : <span style={{ color: '#B42318' }}>Yüklenmedi</span>}</td>
+                <td><input type="file" accept="application/pdf,.pdf" disabled={!!is} onChange={e => { yukle(k, e.target.files?.[0]); e.target.value = ''; }} /></td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div></div>
     </div>
   );
 }
@@ -358,6 +414,7 @@ export function OptikSekmesi() {
       {secili && (
         <>
           <AnahtarBolumu key={secili.kod + secili.soruSayisi} s={secili} mesaj={setMesaj} yenile={hepsiniYenile} />
+          <KitapcikBolumu key={'k' + secili.kod} s={secili} mesaj={setMesaj} yenile={hepsiniYenile} />
           <YuklemeBolumu key={'y' + secili.kod} s={secili} mesaj={setMesaj} kaydedildi={hepsiniYenile} />
           <ElleBolumu key={'e' + secili.kod} s={secili} mesaj={setMesaj} kaydedildi={hepsiniYenile} />
           <SonucBolumu s={secili} v={sonuc} mesaj={setMesaj} yenile={hepsiniYenile} />

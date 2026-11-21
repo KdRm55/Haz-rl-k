@@ -266,6 +266,17 @@ export const optikKayitlari = pgTable('optik_kayitlari', {
   zaman: timestamp('zaman', { withTimezone: true }).notNull().defaultNow()
 }, t => [primaryKey({ columns: [t.setKod, t.no] })]).enableRLS();
 
+/** Soru kitapçığı PDF'i (kitapçık türü başına bir tane). Büyük dosya parça parça eklenir; tamam=true olunca yayına hazırdır. */
+export const optikKitapciklari = pgTable('optik_kitapciklari', {
+  setKod: text('set_kod').notNull().references(() => optikSetleri.kod, { onDelete: 'cascade' }),
+  kitapcik: text('kitapcik').notNull(),   // A | B | C | D
+  ad: text('ad').notNull().default(''),
+  boyut: integer('boyut').notNull().default(0),   // bayt
+  tamam: boolean('tamam').notNull().default(false),
+  veri: text('veri').notNull().default(''),   // base64
+  zaman: timestamp('zaman', { withTimezone: true }).notNull().defaultNow()
+}, t => [primaryKey({ columns: [t.setKod, t.kitapcik] })]).enableRLS();
+
 /** Optik görüntüleri ayrı tutulur (liste sorguları hafif kalsın); kişisel veridir, yalnızca sahibi ve yönetici görür. */
 export const optikGorselleri = pgTable('optik_gorselleri', {
   setKod: text('set_kod').notNull().references(() => optikSetleri.kod, { onDelete: 'cascade' }),
