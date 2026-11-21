@@ -154,7 +154,7 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
   const [ed, setEd] = useState<{ d: YoklamaEditoru; surum: number } | string | null>(null);
   const [edMesaj, setEdMesaj] = useState('');
   const [kirli, setKirli] = useState(false);
-  const [toplu, setToplu] = useState(0);   // 0 = kapalı; her açılışta artar (bileşen yeniden yüklensin diye)
+  const [toplu, setToplu] = useState<{ anahtar: number; liste: OturumGirdisi[] } | null>(null);   // aynı dersin haftalık oturumları tek tabloda
   const [telafi, setTelafi] = useState({ sinif: '', ders: '', iso: '', saat: '' });
   const edRef = useRef<HTMLDivElement>(null);
 
@@ -178,13 +178,20 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
   useEffect(() => { if (ilk.current && hoca) { ilk.current = false; getir(true); } }, [hoca, getir]);
 
   async function ac(o: OturumGirdisi) {
-    setToplu(0);
     if (kirli && !confirm('Kaydedilmemiş değişiklikler var. Bu yoklamayı kaydetmeden kapatmak istiyor musunuz?')) return;
+    setToplu(null);
     setEd('Öğrenci listesi okunuyor…'); setEdMesaj('');
     const r = await yoklamaGetirIslemi(o);
     if (yetkiHatasi(r)) return;
     setKirli(false);
     setEd(r.ok ? { d: r.veri, surum: Date.now() } : r.hata);
+    setTimeout(() => edRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+
+  function topluAc(liste: OturumGirdisi[]) {
+    if (kirli && !confirm('Kaydedilmemiş değişiklikler var. Kaydetmeden kapatmak istiyor musunuz?')) return;
+    setEd(null); setEdMesaj(''); setKirli(false);
+    setToplu({ anahtar: Date.now(), liste });
     setTimeout(() => edRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   }
 
@@ -200,7 +207,12 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
     h?.oturumlar.forEach(o => { if (!m.has(o.iso)) m.set(o.iso, []); m.get(o.iso)!.push(o); });
     return [...m.values()];
   }, [h]);
-  const haftalik = useMemo(() => (h ? h.oturumlar.filter(o => o.iso <= h.bugun || o.kayitli).map(o => ({ iso: o.iso, sinif: o.sinif, saat: o.saat, ders: o.ders, hoca: o.hoca, tur: o.tur })) : []), [h]);
+  /** Aynı şube ve dersin haftadaki (açılabilir) bütün programlı oturumları; tek oturumluysa ya da telafiyse boş döner. */
+  const dersOturumlari = (o: Oturum): OturumGirdisi[] => {
+    if (!h || o.tur === 'Telafi') return [];
+    const l = h.oturumlar.filter(x => x.tur !== 'Telafi' && x.sinif === o.sinif && x.ders === o.ders && (x.iso <= h.bugun || x.kayitli));
+    return l.length > 1 ? l.map(x => ({ iso: x.iso, sinif: x.sinif, saat: x.saat, ders: x.ders, hoca: x.hoca, tur: x.tur })) : [];
+  };
   const secili = ed && typeof ed === 'object' ? ed.d.anahtar : '';
   const girilmedi = h ? h.oturumlar.filter(o => !o.kayitli && o.iso <= h.bugun).length : 0;
 
@@ -224,17 +236,13 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
         {h && h.oturumlar.length > 0 && (
           <>
             <div className="yk-ozet">{h.teacher} · {h.weekStart} haftası · {h.oturumlar.length} ders{girilmedi > 0 && <> · <strong style={{ color: '#8A5210' }}>{girilmedi} dersin yoklaması girilmedi</strong></>}</div>
-            <div style={{ margin: '10px 0' }}>
-              <button type="button" className="btn btn-secondary" disabled={!haftalik.length} onClick={() => { if (kirli && !confirm('Kaydedilmemiş değişiklikler var. Devam edilsin mi?')) return; setEd(null); setKirli(false); setToplu(s => s + 1); }}>
-                Tüm haftanın yoklamasını tek seferde gir ({haftalik.length} ders)</button>
-            </div>
             {gunler.map(l => (
               <div key={l[0].iso} className="yk-gun">
                 <h3>{l[0].gun} {l[0].tarih}</h3>
                 {l.map(o => (
                   <button key={o.anahtar} type="button" className={'yk-oturum' + (o.anahtar === secili ? ' secili' : '')}
                     disabled={o.iso > h.bugun && !o.kayitli} title={o.iso > h.bugun && !o.kayitli ? 'Ders günü gelmeden yoklama girilemez' : undefined}
-                    onClick={() => ac({ iso: o.iso, sinif: o.sinif, saat: o.saat, ders: o.ders, hoca: o.hoca, tur: o.tur })}>
+                    onClick={() => { const g = dersOturumlari(o); if (g.length) topluAc(g); else ac({ iso: o.iso, sinif: o.sinif, saat: o.saat, ders: o.ders, hoca: o.hoca, tur: o.tur }); }}>
                     <span className="yo-saat">{o.saat}</span>
                     <span className="yo-ders">{o.sinif} · {o.ders}{o.kayitli && <small>Son kayıt: {o.zaman}</small>}</span>
                     {o.tur === 'Telafi' && <span className="yk-cip telafi">Telafi</span>}
@@ -269,9 +277,9 @@ export function YoklamaHoca({ b, yetkiHatasi }: { b: HocaBaslangic; yetkiHatasi:
 
       <YoklamaDokumu hoca={hoca} yetkiHatasi={yetkiHatasi} />
 
-      {toplu > 0 && h && <HaftalikToplu key={toplu} oturumlar={haftalik} hoca={hoca} admin={admin} yetkiHatasi={yetkiHatasi} kapat={() => setToplu(0)} bitti={() => getir(true)} />}
-
-      <div ref={edRef}>
+<div ref={edRef}>
+        {toplu && <HaftalikToplu key={toplu.anahtar} oturumlar={toplu.liste} hoca={hoca} admin={admin} yetkiHatasi={yetkiHatasi} setKirli={setKirli}
+          kapat={() => setToplu(null)} bitti={() => getir(true)} />}
         {edMesaj && !ed && <div className="yk-mesaj" style={{ padding: 0 }}><div className="ok">{edMesaj}</div></div>}
         {typeof ed === 'string' && <div className={ed.endsWith('…') ? 'yk-ozet' : 'empty-note'} style={{ marginTop: 18 }}>{ed}</div>}
         {ed && typeof ed === 'object' && (
