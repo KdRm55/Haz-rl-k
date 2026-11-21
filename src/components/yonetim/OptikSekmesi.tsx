@@ -142,7 +142,7 @@ function YuklemeBolumu({ s, mesaj, kaydedildi }: { s: Set; mesaj: (m: MesajDurum
     const harita: Record<string, Eslesen> = {};
     const kodlar = [...new Set(okunan.map(o => o.karekod).filter(Boolean))];
     for (let i = 0; i < kodlar.length; i += 300) {
-      const r = await cagir(optikEslestirIslemi(kodlar.slice(i, i + 300)));
+      const r = await cagir(optikEslestirIslemi(kodlar.slice(i, i + 300), s.kod));
       if (!r.ok) { mesaj({ metin: r.hata, hata: true }); setIs(''); return; }
       Object.assign(harita, r.veri.eslesen); setKarekodluKayit(r.veri.karekodluKayit);
     }

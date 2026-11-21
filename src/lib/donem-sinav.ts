@@ -90,6 +90,11 @@ const dersYetkili = (k: Kapsam, ders: string) => k.admin || k.dersSinif.has(basN
 const sinifYetkili = (k: Kapsam, ders: string, sinif: string) => k.admin || !!k.dersSinif.get(basNorm(ders))?.has(sinif);
 /** Öğrencinin sınavdaki sınıfı, kapsamdaki derslerden en az birinde yetkili mi */
 const ogrenciYetkili = (k: Kapsam, s: Sinav, sinif: string) => k.admin || s.dersler.some(d => sinifYetkili(k, d.ders, sinif));
+/** Optik modülü (optik-yonetim.ts) için aynı yetki kapsamı: yönetici hepsi; hoca yalnızca program dersleri ve şubeleri. */
+export type DsKapsam = Kapsam;
+export const dsKapsam = kapsam;
+export const dsDersYetkili = dersYetkili;
+export const dsSinifYetkili = sinifYetkili;
 /** Sınav giriş belgesi (sinav-yeri.ts) için: sınav ve dersin yetkisi. */
 export async function dsDersYetkisi(db: Db, kod: string, ders: string) {
   const k = await kapsam(db);

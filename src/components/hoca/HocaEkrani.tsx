@@ -10,13 +10,14 @@ import type { HocaBaslangic, HocaProgramSatiri } from '@/lib/hoca';
 import type { TelafiGirdisi } from '@/lib/sirku-kurallari';
 import type { ProgramSecenek } from '@/lib/yazdirma/program-a4';
 import { DonemSekmesi } from '@/components/yonetim/DonemSekmesi';
+import { OptikSekmesi } from '@/components/yonetim/OptikSekmesi';
 import { OturumDustu } from '@/components/yonetim/ortak';
 import { kapsamliCss, YONETIM_CSS } from '@/components/yonetim/stil';
 import { YoklamaHoca } from '@/components/yoklama/YoklamaHoca';
 import { HocaKabuk } from './Kabuk';
 import { SirkuSonuc, type SirkuVerisi } from './SirkuSonuc';
 
-type Sekme = 'auto' | 'manual' | 'program' | 'yoklama' | 'sinav';
+type Sekme = 'auto' | 'manual' | 'program' | 'yoklama' | 'sinav' | 'optik';
 const TUMU = '__TUMU__';
 
 /** Yerel saate göre bu haftanın pazartesisi. */
@@ -200,7 +201,7 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
   }
 
   const sekmeSec = (s: Sekme) => { setSekme(s); setSonuc(null); };
-  const SEKMELER: [Sekme, string][] = [['auto', 'Haftalık programdan'], ['manual', 'Telafi / manuel giriş'], ['program', 'Ders programım'], ['yoklama', 'Yoklama'], ['sinav', 'Sınavlarım']];
+  const SEKMELER: [Sekme, string][] = [['auto', 'Haftalık programdan'], ['manual', 'Telafi / manuel giriş'], ['program', 'Ders programım'], ['yoklama', 'Yoklama'], ['sinav', 'Sınavlarım'], ['optik', 'Optik ve kitapçık']];
 
   return (
     <HocaKabuk>
@@ -235,6 +236,15 @@ export function HocaEkrani({ b, kim }: { b: HocaBaslangic; kim: string }) {
           <div className="panel active">
             <OturumDustu.Provider value={() => router.refresh()}>
               <div className="ykap"><style>{SINAV_CSS}</style><DonemSekmesi hocaSecimi={b.rol === 'admin' ? b.hocalar : undefined} /></div>
+            </OturumDustu.Provider>
+          </div>
+        )}
+        {sekme === 'optik' && (
+          <div className="panel active">
+            <h2 className="panel-title">Optik ve soru kitapçıkları</h2>
+            <p className="panel-desc">Sınav yapılan dersiniz için cevap anahtarını, taranmış optikleri ve soru kitapçığı PDF&apos;lerini yükleyin; puanları sınava yazın ve öğrencilere yayınlayın. Yalnızca kendi derslerinizin ve şubelerinizin öğrencileri görünür.</p>
+            <OturumDustu.Provider value={() => router.refresh()}>
+              <div className="ykap"><style>{SINAV_CSS}</style><OptikSekmesi /></div>
             </OturumDustu.Provider>
           </div>
         )}

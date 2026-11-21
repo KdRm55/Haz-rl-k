@@ -8,33 +8,51 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { vt, schema } from '@/db';
 import { satirlariTemizle } from './aktarim-kurallari';
 import { KullaniciHatasi, YetkiHatasi } from './hata';
-import { islemKaydet, oturum, yetkiGerekli } from './oturum';
+import { islemKaydet, oturum } from './oturum';
+import { dsDersYetkili, dsKapsam, dsSinifYetkili, type DsKapsam } from './donem-sinav';
 import { anahtarCoz, cevapNorm, cevapTamamla, cezaOku, elleSatirlari, karekodKitapcigi, optikNotu } from './optik/kurallar';
 
 type Vt = ReturnType<typeof vt>;
 type Db = Vt | Parameters<Parameters<Vt['transaction']>[0]>[0];
-const yonetici = () => yetkiGerekli(['admin']);
 const GORSEL_EN_COK = 1_500_000;   // base64 karakter sayısı (≈1,1 MB)
 
-async function setBul(db: Db, kod: string) {
+/**
+ * Yetki: yönetici bütün setleri; öğretim elemanı yalnızca ders programında verdiği derslerin setlerini ve yalnızca
+ * o dersi verdiği şubelerin öğrencilerinin optiklerini yönetir (dönem sınavı yetki kapsamıyla aynı).
+ */
+const kapsamAl = (db: Db) => dsKapsam(db);
+
+async function setBul(db: Db, kod: string, k?: DsKapsam) {
   const [s] = await db.select().from(schema.optikSetleri).where(eq(schema.optikSetleri.kod, String(kod)));
   if (!s) throw new KullaniciHatasi('Optik seti bulunamadı. Paneli yenileyin.');
+  if (k && !dsDersYetkili(k, s.ders)) throw new KullaniciHatasi(`"${s.ders}" dersinin optik işlemleri size ait değil.`);
   return s;
 }
 
+/** Hoca için: setin dönem sınavında, hocanın dersi verdiği şubelerdeki öğrenci numaraları (yönetici için null = sınırsız). */
+async function izinliOgrenciler(db: Db, k: DsKapsam, s: { donemKod: string; ders: string }): Promise<Set<string> | null> {
+  if (k.admin) return null;
+  const o = await db.select({ no: schema.donemSinavOgrencileri.no, sinif: schema.donemSinavOgrencileri.sinif }).from(schema.donemSinavOgrencileri)
+    .where(eq(schema.donemSinavOgrencileri.sinavKod, s.donemKod));
+  return new Set(o.filter(x => dsSinifYetkili(k, s.ders, x.sinif)).map(x => x.no));
+}
+const ogrenciKontrol = (izin: Set<string> | null, no: string) => {
+  if (izin && !izin.has(no)) throw new KullaniciHatasi(`${no} numaralı öğrenci bu sınavda sizin şubelerinizde değil.`);
+};
+
 /* ---------- Yönetim: durum ve set ---------- */
 export async function optikDurum() {
-  await yonetici();
-  const db = vt();
-  const [setler, kitapciklar, sayilar, donemler, dersler] = await Promise.all([
+  const db = vt(), k = await kapsamAl(db);
+  const [setler0, kitapciklar, sayilar, donemler, dersler0] = await Promise.all([
     db.select().from(schema.optikSetleri).orderBy(asc(schema.optikSetleri.olusturma)),
     db.select({ set: schema.optikKitapciklari.setKod, kitapcik: schema.optikKitapciklari.kitapcik, ad: schema.optikKitapciklari.ad, boyut: schema.optikKitapciklari.boyut, tamam: schema.optikKitapciklari.tamam }).from(schema.optikKitapciklari),
     db.select({ set: schema.optikKayitlari.setKod, kaynak: schema.optikKayitlari.kaynak, n: sql<number>`count(*)::int` }).from(schema.optikKayitlari).groupBy(schema.optikKayitlari.setKod, schema.optikKayitlari.kaynak),
     db.select({ kod: schema.donemSinavlari.kod, ad: schema.donemSinavlari.ad }).from(schema.donemSinavlari).where(eq(schema.donemSinavlari.arsiv, false)).orderBy(asc(schema.donemSinavlari.olusturma)),
     db.select({ kod: schema.donemSinavDersleri.sinavKod, ders: schema.donemSinavDersleri.ders }).from(schema.donemSinavDersleri).orderBy(asc(schema.donemSinavDersleri.sira))
   ]);
+  const setler = setler0.filter(s => dsDersYetkili(k, s.ders)), dersler = dersler0.filter(x => dsDersYetkili(k, x.ders));
   return {
-    donemler: donemler.map(d => ({ ...d, dersler: dersler.filter(x => x.kod === d.kod).map(x => x.ders) })),
+    donemler: donemler.map(d => ({ ...d, dersler: dersler.filter(x => x.kod === d.kod).map(x => x.ders) })).filter(d => k.admin || d.dersler.length),
     setler: setler.map(s => ({
       kod: s.kod, ad: s.ad, donemKod: s.donemKod, ders: s.ders, soruSayisi: s.soruSayisi, yanlisCezasi: s.yanlisCezasi, anahtar: s.anahtar, yayinda: s.yayinda,
       kitapciklar: kitapciklar.filter(x => x.set === s.kod && x.tamam).map(x => ({ kitapcik: x.kitapcik, ad: x.ad, boyut: x.boyut })).sort((a, b) => a.kitapcik.localeCompare(b.kitapcik)),
@@ -45,13 +63,14 @@ export async function optikDurum() {
 export type OptikDurumu = Awaited<ReturnType<typeof optikDurum>>;
 
 export async function optikSetOlustur(v: { ad: string; donemKod: string; ders: string }) {
-  await yonetici();
+  const k = await kapsamAl(vt());
   const ad = String(v?.ad ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
   if (!ad) throw new KullaniciHatasi('Optik setine bir ad verin (örn. "Kıraat vize").');
   const db = vt();
   const [ders] = await db.select().from(schema.donemSinavDersleri)
     .where(and(eq(schema.donemSinavDersleri.sinavKod, String(v?.donemKod ?? '')), eq(schema.donemSinavDersleri.ders, String(v?.ders ?? ''))));
   if (!ders) throw new KullaniciHatasi('Dönem sınavını ve dersini seçin. Puanlar bu dersin puanlarına yazılır.');
+  if (!dsDersYetkili(k, ders.ders)) throw new KullaniciHatasi(`"${ders.ders}" dersinin optik işlemleri size ait değil.`);
   const kod = await db.transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7308)`);
     const l = await tx.select({ kod: schema.optikSetleri.kod }).from(schema.optikSetleri);
@@ -64,8 +83,7 @@ export async function optikSetOlustur(v: { ad: string; donemKod: string; ders: s
 }
 
 export async function optikSetSil(kod: string) {
-  await yonetici();
-  const s = await setBul(vt(), kod);
+  const s = await setBul(vt(), kod, await kapsamAl(vt()));
   await vt().delete(schema.optikSetleri).where(eq(schema.optikSetleri.kod, s.kod));
   await islemKaydet('Optik seti', `${s.kod} "${s.ad}" silindi (optikler ve görüntüler dahil)`);
   return optikDurum();
@@ -73,8 +91,7 @@ export async function optikSetSil(kod: string) {
 
 /** Yüklenen şablonu doğrular ve anahtarı kaydeder. Optikler zaten yüklüyse puanlar yeni anahtara göre yeniden hesaplanır (kayıtlı değildir; puanı yeniden yazmak gerekir). */
 export async function optikAnahtarKaydet(kod: string, satirlar: unknown, yanlisCezasi: unknown) {
-  await yonetici();
-  const s = await setBul(vt(), kod);
+  const s = await setBul(vt(), kod, await kapsamAl(vt()));
   const r = anahtarCoz(satirlariTemizle(satirlar));
   const ceza = cezaOku(yanlisCezasi);
   await vt().update(schema.optikSetleri).set({ anahtar: r.anahtar, soruSayisi: r.soruSayisi, yanlisCezasi: String(ceza) }).where(eq(schema.optikSetleri.kod, s.kod));
@@ -83,8 +100,7 @@ export async function optikAnahtarKaydet(kod: string, satirlar: unknown, yanlisC
 }
 
 export async function optikYayin(kod: string, ac: boolean) {
-  await yonetici();
-  const s = await setBul(vt(), kod);
+  const s = await setBul(vt(), kod, await kapsamAl(vt()));
   if (ac) {
     if (!Object.keys(s.anahtar).length) throw new KullaniciHatasi('Önce cevap anahtarını yükleyin.');
     const [{ n }] = await vt().select({ n: sql<number>`count(*)::int` }).from(schema.optikKayitlari).where(eq(schema.optikKayitlari.setKod, s.kod));
@@ -104,8 +120,7 @@ export type KitapcikParcasi = { setKod: string; kitapcik: string; ad: string; bo
  * son parça geldiğinde dosya "tamam" olur ve öğrenciye (yayındaysa) kendi kitapçığı olarak gösterilir.
  */
 export async function optikKitapcikParcasi(v: KitapcikParcasi) {
-  await yonetici();
-  const db = vt(), s = await setBul(db, v?.setKod);
+  const db = vt(), s = await setBul(db, v?.setKod, await kapsamAl(db));
   const kit = String(v?.kitapcik ?? '').toUpperCase();
   if (!/^[A-D]$/.test(kit)) throw new KullaniciHatasi('Kitapçık türü A, B, C ya da D olmalı.');
   const sira = Number(v.sira), toplam = Number(v.toplam), boyut = Number(v.boyut), parca = String(v.parca ?? '');
@@ -134,8 +149,7 @@ export async function optikKitapcikParcasi(v: KitapcikParcasi) {
 }
 
 export async function optikKitapcikSil(kod: string, kitapcik: string) {
-  await yonetici();
-  const s = await setBul(vt(), kod), kit = String(kitapcik ?? '').toUpperCase();
+  const s = await setBul(vt(), kod, await kapsamAl(vt())), kit = String(kitapcik ?? '').toUpperCase();
   await vt().delete(schema.optikKitapciklari).where(and(eq(schema.optikKitapciklari.setKod, s.kod), eq(schema.optikKitapciklari.kitapcik, kit)));
   await islemKaydet('Optik kitapçığı', `${s.kod} ${kit} kitapçığı silindi`);
   return optikDurum();
@@ -150,6 +164,8 @@ export async function optikKitapcikPdf(kod: string, kitapcik: string) {
     const k = schema.optikKayitlari, s = schema.optikSetleri;
     const [r] = await db.select({ kitapcik: k.kitapcik }).from(k).innerJoin(s, eq(k.setKod, s.kod)).where(and(eq(k.setKod, kod), eq(k.no, o.ogrenciNo), eq(s.yayinda, true)));
     if (!r || r.kitapcik !== kit) throw new YetkiHatasi();
+  } else if (o.tur === 'hoca') {
+    try { await setBul(db, kod, await kapsamAl(db)); } catch { throw new YetkiHatasi(); }
   } else if (o.tur !== 'admin') throw new YetkiHatasi();
   const t = schema.optikKitapciklari;
   const [p] = await db.select({ ad: t.ad, veri: t.veri }).from(t).where(and(eq(t.setKod, kod), eq(t.kitapcik, kit), eq(t.tamam, true)));
@@ -170,10 +186,15 @@ async function karekodlariBul(db: Db, karekodlar: string[]) {
 }
 
 /** Önizleme için: karekodlar kime ait? */
-export async function optikEslestir(karekodlar: unknown) {
-  await yonetici();
+export async function optikEslestir(karekodlar: unknown, setKod?: string) {
+  const db = vt(), k = await kapsamAl(db);
   const liste = Array.isArray(karekodlar) ? karekodlar.map(String) : [];
-  const h = await karekodlariBul(vt(), liste);
+  const h = await karekodlariBul(db, liste);
+  if (!k.admin) {
+    // Hoca yalnızca kendi dersinin setinde, kendi şubelerinin öğrencilerini görür
+    const izin = await izinliOgrenciler(db, k, await setBul(db, String(setKod ?? ''), k));
+    for (const [kod, e] of [...h]) if (!izin?.has(e.no)) h.delete(kod);
+  }
   const [{ n }] = await vt().select({ n: sql<number>`count(*)::int` }).from(schema.sinavYeriKayitlari).where(sql`${schema.sinavYeriKayitlari.karekod} <> ''`);
   return { karekodluKayit: n, eslesen: Object.fromEntries([...h.entries()]) as Record<string, Eslesen> };
 }
@@ -195,8 +216,8 @@ async function gorselYaz(db: Db, setKod: string, no: string, gorsel: string) {
 
 /** Var olan (özellikle elle girilen) bir optik kaydına görüntü ekler ya da görüntüsünü değiştirir; öğrenci yayında bunu da görür. */
 export async function optikGorselEkle(v: { setKod: string; no: string; gorsel: string }) {
-  await yonetici();
-  const db = vt(), s = await setBul(db, v?.setKod), no = String(v?.no ?? '').replace(/\D/g, '');
+  const db = vt(), k0 = await kapsamAl(db), s = await setBul(db, v?.setKod, k0), no = String(v?.no ?? '').replace(/\D/g, '');
+  ogrenciKontrol(await izinliOgrenciler(db, k0, s), no);
   const [k] = await db.select({ no: schema.optikKayitlari.no, ad: schema.optikKayitlari.adSoyad }).from(schema.optikKayitlari).where(and(eq(schema.optikKayitlari.setKod, s.kod), eq(schema.optikKayitlari.no, no)));
   if (!k) throw new KullaniciHatasi('Bu öğrencinin kayıtlı bir optiği yok. Önce cevapları elle kaydedin.');
   await db.transaction(async tx => {
@@ -219,8 +240,8 @@ async function optikYaz(db: Db, s: typeof schema.optikSetleri.$inferSelect, v: {
 
 /** Tek optiği kaydeder (QR ile eşleşen ya da öğrenci numarası verilen). Aynı öğrenci için tekrar yüklenirse yenisi geçerli olur. */
 export async function optikKaydet(v: OptikGirdisi) {
-  await yonetici();
-  const db = vt(), s = await setBul(db, v?.setKod);
+  const db = vt(), k0 = await kapsamAl(db), s = await setBul(db, v?.setKod, k0);
+  const izin = await izinliOgrenciler(db, k0, s);
   const cevap = cevapNorm(v?.cevaplar);
   if (cevap === null || !cevap.length) throw new KullaniciHatasi('Cevaplar okunamadı.');
   let no = String(v.no ?? '').replace(/\D/g, ''), ad = '', kitapcik = String(v.kitapcik ?? '').toUpperCase();
@@ -232,6 +253,7 @@ export async function optikKaydet(v: OptikGirdisi) {
     if (!no) throw new KullaniciHatasi('Öğrenci numarası yok.');
     ad = await ogrenciAdi(db, no);
   }
+  ogrenciKontrol(izin, no);
   if (!/^[A-D]$/.test(kitapcik)) throw new KullaniciHatasi(`${no}: kitapçık türü anlaşılamadı.`);
   const n = await optikYaz(db, s, { no, ad, kitapcik, cevaplar: cevapTamamla(cevap), uyari: String(v.uyari ?? ''), kaynak: v.kaynak === 'Elle' ? 'Elle' : 'QR', gorsel: v.gorsel });
   return { no, ad, kitapcik, dogru: n.dogru, yanlis: n.yanlis, bos: n.bos, puan: n.puan };
@@ -239,13 +261,14 @@ export async function optikKaydet(v: OptikGirdisi) {
 
 /** QR'sız (farklı form) optikler: "öğrenci no  kitapçık  cevaplar" satırları. Hepsi önce denetlenir; biri hatalıysa hiçbiri yazılmaz. */
 export async function optikElleKaydet(setKod: string, metin: string) {
-  await yonetici();
-  const db = vt(), s = await setBul(db, setKod);
+  const db = vt(), k0 = await kapsamAl(db), s = await setBul(db, setKod, k0);
+  const izin = await izinliOgrenciler(db, k0, s);
   if (!s.soruSayisi) throw new KullaniciHatasi('Önce cevap anahtarını yükleyin (soru sayısı buradan belli olur).');
   const { satirlar, hatalar } = elleSatirlari(metin, s.soruSayisi);
   const adlar = new Map<string, string>();
   for (const x of satirlar) {
     if (!s.anahtar[x.kitapcik]) hatalar.push(`${x.no}: ${x.kitapcik} kitapçığının cevap anahtarı yok.`);
+    try { ogrenciKontrol(izin, x.no); } catch (e) { hatalar.push((e as Error).message); }
     try { adlar.set(x.no, await ogrenciAdi(db, x.no)); } catch (e) { hatalar.push((e as Error).message); }
   }
   if (hatalar.length) throw new KullaniciHatasi('Hiçbir kayıt yazılmadı:\n' + hatalar.slice(0, 15).join('\n'));
@@ -264,13 +287,15 @@ export async function optikElleKaydet(setKod: string, metin: string) {
 
 /* ---------- Sonuçlar, puan yazma ---------- */
 export async function optikSonuclar(kod: string) {
-  await yonetici();
-  const db = vt(), s = await setBul(db, kod);
-  const [kayitlar, ogrenciler, puanlar] = await Promise.all([
+  const db = vt(), k0 = await kapsamAl(db), s = await setBul(db, kod, k0);
+  const izin = await izinliOgrenciler(db, k0, s);
+  const [kayitlar0, ogrenciler0, puanlar] = await Promise.all([
     db.select().from(schema.optikKayitlari).where(eq(schema.optikKayitlari.setKod, s.kod)).orderBy(asc(schema.optikKayitlari.no)),
     db.select().from(schema.donemSinavOgrencileri).where(eq(schema.donemSinavOgrencileri.sinavKod, s.donemKod)),
     db.select().from(schema.donemSinavPuanlari).where(and(eq(schema.donemSinavPuanlari.sinavKod, s.donemKod), eq(schema.donemSinavPuanlari.ders, s.ders)))
   ]);
+  // Hoca yalnızca kendi şubelerinin öğrencilerini görür
+  const kayitlar = izin ? kayitlar0.filter(x => izin.has(x.no)) : kayitlar0, ogrenciler = izin ? ogrenciler0.filter(o => izin.has(o.no)) : ogrenciler0;
   const ceza = Number(s.yanlisCezasi);
   const mevcut = new Map(puanlar.map(p => [p.no, p.puan]));
   const satirlar = kayitlar.map(k => {
@@ -296,10 +321,12 @@ export type OptikSonuclari = Awaited<ReturnType<typeof optikSonuclar>>;
  * farklı puanın üzerine yalnızca uzerineYaz açıkken yazılır. Optiği olmayan öğrencilere dokunulmaz.
  */
 export async function optikPuanYaz(kod: string, uzerineYaz: boolean) {
-  await yonetici();
+  await kapsamAl(vt());   // oturum ve rol erken denetlenir
   const sonuc = await vt().transaction(async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(7306)`);   // dönem puan yükleme kilidiyle aynı
-    const s = await setBul(tx, kod);
+    const k0 = await kapsamAl(tx);
+    const s = await setBul(tx, kod, k0);
+    const izin = await izinliOgrenciler(tx, k0, s);
     if (!Object.keys(s.anahtar).length) throw new KullaniciHatasi('Önce cevap anahtarını yükleyin.');
     const [sinav] = await tx.select().from(schema.donemSinavlari).where(eq(schema.donemSinavlari.kod, s.donemKod));
     if (!sinav) throw new KullaniciHatasi('Bağlı dönem sınavı bulunamadı.');
@@ -313,6 +340,7 @@ export async function optikPuanYaz(kod: string, uzerineYaz: boolean) {
     const yaz: { no: string; ad: string; eski: string; yeni: string }[] = [];
     let ayni = 0, atlanan = 0, sinavdaYok = 0;
     for (const k of kayitlar) {
+      if (izin && !izin.has(k.no)) continue;   // hoca: başka şubenin öğrencisine dokunulmaz
       if (!sinavda.has(k.no)) { sinavdaYok++; continue; }
       const yeni = String(optikNotu(k.cevaplar, s.anahtar[k.kitapcik], ceza).puan), eski = mevcut.get(k.no) ?? '';
       if (eski === yeni) ayni++;
@@ -365,7 +393,12 @@ export async function optikGorsel(kod: string, no: string) {
   if (o.tur === 'ogrenci') {
     const [s] = await db.select({ yayinda: schema.optikSetleri.yayinda }).from(schema.optikSetleri).where(eq(schema.optikSetleri.kod, kod));
     if (o.ogrenciNo !== no || !s?.yayinda) throw new YetkiHatasi();
+  } else if (o.tur === 'hoca') {
+    try {
+      const k0 = await kapsamAl(db), s = await setBul(db, kod, k0);
+      ogrenciKontrol(await izinliOgrenciler(db, k0, s), no);
+    } catch { throw new YetkiHatasi(); }
   } else if (o.tur !== 'admin') throw new YetkiHatasi();
-  const [g] = await db.select().from(schema.optikGorselleri).where(and(eq(schema.optikGorselleri.setKod, kod), eq(schema.optikGorselleri.no, no)));
+  const [g] =await db.select().from(schema.optikGorselleri).where(and(eq(schema.optikGorselleri.setKod, kod), eq(schema.optikGorselleri.no, no)));
   return g ? { turu: g.turu, veri: Buffer.from(g.veri, 'base64') } : null;
 }
