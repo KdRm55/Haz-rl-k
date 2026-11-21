@@ -47,7 +47,7 @@ export function PuanYukleme({ yayinda, bitti, mesaj }: { yayinda: boolean; bitti
     if (s.length) await onizle(s, null);
   }
   async function dosyaSecildi(f: File | undefined) {
-    setOniz(null); setFark(null); setDosya(null); mesaj(null);
+    setOniz(null); setFark(null); setDosya(null); setUzerine(false); setAdYaz(false); mesaj(null);
     if (!f) return;
     setDurum('Dosya okunuyor…');
     try { const d = await dosyaOku(f); setDosya(d); await sayfaSec(d, d.sayfalar[0]); }
@@ -57,7 +57,7 @@ export function PuanYukleme({ yayinda, bitti, mesaj }: { yayinda: boolean; bitti
   const eslesme = (): Record<string, number> => ({ ...esl, ...(sinav === 'yazili' ? { sozlu: -1 } : sinav === 'sozlu' ? { yazili: -1 } : {}) });
   const veri = (u = uzerine, a = adYaz) => ({ satirlar, basSatir: oniz!.basSatir, eslesme: eslesme(), dosyaAdi: dosya?.ad, uzerineYaz: u, adUyusmazYaz: a });
 
-  async function farkGoster(u = false, a = false) {
+  async function farkGoster(u = uzerine, a = adYaz) {
     setUzerine(u); setAdYaz(a); setBekliyor('fark');
     const r = await cagir(puanFarkIslemi(veri(u, a)));
     setBekliyor('');
@@ -169,12 +169,13 @@ export function PuanYukleme({ yayinda, bitti, mesaj }: { yayinda: boolean; bitti
           <ListeTablosu baslik="Listede bulunamayanlar" sayi={s.bulunamadi} kolonlar={['Dosya satırı', 'Öğrenci No', 'Adı Soyadı', 'Neden']} satirlar={fark.bulunamadi.map(x => [x.satir, x.no, x.ad, x.neden])} />
           <ListeTablosu baslik="Mevcut puandan farklı olanlar" sayi={s.degisen} kolonlar={['Öğrenci No', 'Adı Soyadı', 'Sınav', 'Şu anki', 'Dosyadaki']} satirlar={fark.degisen.map(x => [x.no, x.ad, x.alan, x.eski, x.yeni])} />
           <ListeTablosu baslik="Yeni yazılacak puanlar" sayi={s.yeni} kolonlar={['Öğrenci No', 'Adı Soyadı', 'Sınav', 'Puan']} satirlar={fark.yeni.map(x => [x.no, x.ad + (x.adUyusmaz ? ' (ad uyuşmuyor)' : ''), x.alan, x.yeni])} />
+          {s.degisen > 0 && !uzerine && !s.yazilacak && <p className="aciklama uyari-metin">Dosyadaki {s.degisen} puan, sınav listesindeki mevcut puandan farklı olduğu için henüz yazılmayacak. Puanları düzeltmek (üzerine yazmak) için aşağıdaki kutuyu işaretleyin.</p>}
           {s.degisen > 0 && <label className="onay"><input type="checkbox" checked={uzerine} onChange={ev => farkGoster(ev.target.checked, adYaz)} />
-            <span>Sınav listesinde zaten farklı bir puanı olan {s.degisen} öğrencinin puanını dosyadakiyle değiştir. İşaretlemezseniz mevcut puanlar korunur.</span></label>}
+            <span><b>Düzeltme yapıyorsanız işaretleyin:</b> sınav listesinde zaten farklı bir puanı olan {s.degisen} öğrencinin puanını dosyadakiyle değiştir. İşaretlemezseniz mevcut puanlar korunur.</span></label>}
           {s.adUyusmaz > 0 && <label className="onay tehlike"><input type="checkbox" checked={adYaz} onChange={ev => farkGoster(uzerine, ev.target.checked)} />
             <span>Adı uyuşmayan {s.adUyusmaz} satırın puanını da yaz. Yalnızca adın farklı yazıldığından (ör. yazım hatası) ve numaranın doğru olduğundan eminseniz işaretleyin.</span></label>}
           <button className="btn btn-primary" type="button" disabled={!s.yazilacak || !!bekliyor} onClick={uygula}>
-            {bekliyor === 'uygula' ? 'Yazılıyor…' : s.yazilacak ? `${s.yazilacak} puanı yaz` : 'Yazılacak puan yok'}</button>
+            {bekliyor === 'uygula' ? 'Yazılıyor…' : s.yazilacak ? `${s.yazilacak} puanı yaz` : s.degisen && !uzerine ? 'Önce üzerine yazma kutusunu işaretleyin' : 'Yazılacak puan yok'}</button>
         </div>
       )}
     </div>
