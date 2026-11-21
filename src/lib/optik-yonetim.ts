@@ -123,16 +123,32 @@ async function ogrenciAdi(db: Db, no: string) {
   return (o.adi + ' ' + o.soyadi).trim();
 }
 
+/** data URL (JPEG) → görüntü tablosu. Geçersiz ya da çok büyükse hata verir. */
+async function gorselYaz(db: Db, setKod: string, no: string, gorsel: string) {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(gorsel ?? ''));
+  if (!m || m[1].length > GORSEL_EN_COK) throw new KullaniciHatasi(`${no}: optik görüntüsü geçersiz ya da çok büyük.`);
+  await db.insert(schema.optikGorselleri).values({ setKod, no, veri: m[1] }).onConflictDoUpdate({ target: [schema.optikGorselleri.setKod, schema.optikGorselleri.no], set: { veri: m[1] } });
+}
+
+/** Var olan (özellikle elle girilen) bir optik kaydına görüntü ekler ya da görüntüsünü değiştirir; öğrenci yayında bunu da görür. */
+export async function optikGorselEkle(v: { setKod: string; no: string; gorsel: string }) {
+  await yonetici();
+  const db = vt(), s = await setBul(db, v?.setKod), no = String(v?.no ?? '').replace(/\D/g, '');
+  const [k] = await db.select({ no: schema.optikKayitlari.no, ad: schema.optikKayitlari.adSoyad }).from(schema.optikKayitlari).where(and(eq(schema.optikKayitlari.setKod, s.kod), eq(schema.optikKayitlari.no, no)));
+  if (!k) throw new KullaniciHatasi('Bu öğrencinin kayıtlı bir optiği yok. Önce cevapları elle kaydedin.');
+  await db.transaction(async tx => {
+    await gorselYaz(tx, s.kod, no, v.gorsel);
+    await tx.update(schema.optikKayitlari).set({ gorsel: true }).where(and(eq(schema.optikKayitlari.setKod, s.kod), eq(schema.optikKayitlari.no, no)));
+  });
+  await islemKaydet('Optik görüntüsü', `${s.kod}: ${no} ${k.ad} için görüntü eklendi`);
+  return { no, ad: k.ad };
+}
+
 async function optikYaz(db: Db, s: typeof schema.optikSetleri.$inferSelect, v: { no: string; ad: string; kitapcik: string; cevaplar: string; uyari: string; kaynak: 'QR' | 'Elle'; gorsel?: string }) {
   if (!s.anahtar[v.kitapcik]) throw new KullaniciHatasi(`${v.no}: ${v.kitapcik} kitapçığının cevap anahtarı yok.`);
   const ayni = { adSoyad: v.ad, kitapcik: v.kitapcik, cevaplar: v.cevaplar, kaynak: v.kaynak, uyari: v.uyari.slice(0, 300), zaman: new Date() };
   let gorsel = false;
-  if (v.gorsel) {
-    const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(v.gorsel);
-    if (!m || m[1].length > GORSEL_EN_COK) throw new KullaniciHatasi(`${v.no}: optik görüntüsü geçersiz ya da çok büyük.`);
-    await db.insert(schema.optikGorselleri).values({ setKod: s.kod, no: v.no, veri: m[1] }).onConflictDoUpdate({ target: [schema.optikGorselleri.setKod, schema.optikGorselleri.no], set: { veri: m[1] } });
-    gorsel = true;
-  }
+  if (v.gorsel) { await gorselYaz(db, s.kod, v.no, v.gorsel); gorsel = true; }
   await db.insert(schema.optikKayitlari).values({ setKod: s.kod, no: v.no, ...ayni, gorsel })
     .onConflictDoUpdate({ target: [schema.optikKayitlari.setKod, schema.optikKayitlari.no], set: gorsel ? { ...ayni, gorsel } : ayni });
   return optikNotu(v.cevaplar, s.anahtar[v.kitapcik], Number(s.yanlisCezasi));

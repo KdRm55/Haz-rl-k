@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import {
-  optikAnahtarKaydetIslemi, optikDurumIslemi, optikElleKaydetIslemi, optikEslestirIslemi, optikKaydetIslemi, optikPuanYazIslemi,
+  optikAnahtarKaydetIslemi, optikDurumIslemi, optikElleKaydetIslemi, optikEslestirIslemi, optikGorselEkleIslemi, optikKaydetIslemi, optikPuanYazIslemi,
   optikSetOlusturIslemi, optikSetSilIslemi, optikSonuclarIslemi, optikYayinIslemi
 } from '@/app/yonetim/islemler';
 import { dosyaOku, xlsxIndir } from '@/lib/dosya-oku';
 import { anahtarSablonSatirlari, optikNotu } from '@/lib/optik/kurallar';
-import { optikDosyasiOku, type DosyaOkumasi } from '@/lib/optik/tarayici';
+import { optikDosyasiOku, optikGorseliHazirla, type DosyaOkumasi } from '@/lib/optik/tarayici';
 import type { OptikDurumu, OptikSonuclari } from '@/lib/optik-yonetim';
 import { ListeTablosu, Mesaj, OzetKutu, useCagir, useVeri, Yukleniyor, type MesajDurumu } from './ortak';
 
@@ -216,6 +216,21 @@ function SonucBolumu({ s, v, mesaj, yenile }: { s: Set; v: OptikSonuclari | null
   const [uzerine, setUzerine] = useState(false);
   const [bekliyor, setBekliyor] = useState('');
   const [acik, setAcik] = useState<string | null>(null);
+  const [yuklenen, setYuklenen] = useState('');
+
+  /** Elle girilen (ya da görüntüsü olmayan) kayda optik fotoğrafını/taramasını ekler. */
+  async function gorselEkle(no: string, f: File | undefined) {
+    if (!f) return;
+    setYuklenen(no); mesaj(null);
+    try {
+      const gorsel = await optikGorseliHazirla(f);
+      const r = await cagir(optikGorselEkleIslemi({ setKod: s.kod, no, gorsel }));
+      if (!r.ok) { mesaj({ metin: r.hata, hata: true }); return; }
+      mesaj({ metin: `${r.veri.no} ${r.veri.ad} için optik görüntüsü eklendi.${s.yayinda ? ' Optikler yayında olduğu için öğrenci hemen görebilir.' : ''}` });
+      setAcik(null); yenile();
+    } catch (e) { mesaj({ metin: 'Görüntü eklenemedi: ' + (e instanceof Error ? e.message : String(e)), hata: true }); }
+    finally { setYuklenen(''); }
+  }
 
   async function puanYaz() {
     if (!v?.satirlar.length) return;
@@ -256,7 +271,9 @@ function SonucBolumu({ s, v, mesaj, yenile }: { s: Set; v: OptikSonuclari | null
             <tr key={x.no}>
               <td>{x.no}</td><td>{x.ad}</td><td>{x.kitapcik}</td><td>{x.dogru}</td><td>{x.yanlis}</td><td>{x.bos}</td><td><b>{fmt(x.puan)}</b></td>
               <td style={x.donemPuani && x.donemPuani !== String(x.puan) ? { color: '#B42318', fontWeight: 700 } : undefined}>{x.donemPuani ? String(x.donemPuani).replace('.', ',') : '—'}</td>
-              <td>{x.kaynak === 'Elle' ? 'Elle girildi' : x.uyari}{x.gorsel && <> {x.kaynak === 'Elle' || x.uyari ? '· ' : ''}<button type="button" className="btn-link" onClick={() => setAcik(acik === x.no ? null : x.no)}>{acik === x.no ? 'gizle' : 'optik'}</button></>}</td>
+              <td>{x.kaynak === 'Elle' ? 'Elle girildi' : x.uyari}{x.gorsel && <> {x.kaynak === 'Elle' || x.uyari ? '· ' : ''}<button type="button" className="btn-link" onClick={() => setAcik(acik === x.no ? null : x.no)}>{acik === x.no ? 'gizle' : 'optik'}</button></>}
+                {(x.kaynak === 'Elle' || !x.gorsel) && <> {x.gorsel || x.kaynak === 'Elle' ? '· ' : ''}<label className="btn-link" style={{ cursor: 'pointer' }}>{yuklenen === x.no ? 'yükleniyor…' : x.gorsel ? 'görüntüyü değiştir' : 'görüntü ekle'}
+                  <input type="file" accept="image/jpeg,image/png" hidden disabled={!!yuklenen} onChange={e => { gorselEkle(x.no, e.target.files?.[0]); e.target.value = ''; }} /></label></>}</td>
             </tr>
           ))}</tbody>
         </table>

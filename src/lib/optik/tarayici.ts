@@ -65,6 +65,13 @@ function karekodOku(bmp: ImageBitmap): string {
   return '';
 }
 
+/** Elle girilen kayıtlara eklenecek görüntüyü küçültüp JPEG (data URL) yapar. */
+export async function optikGorseliHazirla(f: File): Promise<string> {
+  const bmp = await createImageBitmap(f);
+  try { return tuvaleCiz(bmp, false, Math.min(GORSEL_GENISLIK, bmp.width)).toDataURL('image/jpeg', 0.72); }
+  finally { bmp.close(); }
+}
+
 export async function optikDosyasiOku(f: File): Promise<DosyaOkumasi> {
   const bmp = await createImageBitmap(f);
   try {

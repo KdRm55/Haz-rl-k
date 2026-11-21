@@ -73,6 +73,7 @@ export async function optikAnahtarKaydetIslemi(kod: string, satirlar: string[][]
 export async function optikYayinIslemi(kod: string, ac: boolean) { return sar(() => oy.optikYayin(kod, ac)); }
 export async function optikEslestirIslemi(karekodlar: string[]) { return sar(() => oy.optikEslestir(karekodlar)); }
 export async function optikKaydetIslemi(v: oy.OptikGirdisi) { return sar(() => oy.optikKaydet(v)); }
+export async function optikGorselEkleIslemi(v: { setKod: string; no: string; gorsel: string }) { return sar(() => oy.optikGorselEkle(v)); }
 export async function optikElleKaydetIslemi(kod: string, metin: string) { return sar(() => oy.optikElleKaydet(kod, metin)); }
 export async function optikSonuclarIslemi(kod: string) { return sar(() => oy.optikSonuclar(kod)); }
 export async function optikPuanYazIslemi(kod: string, uzerineYaz: boolean) { return sar(() => oy.optikPuanYaz(kod, uzerineYaz)); }
