@@ -25,12 +25,32 @@ function tuvaleCiz(bmp: ImageBitmap, ters = false, genislik = bmp.width) {
   return c;
 }
 
-/** QR'ı önce bütün sayfada, olmazsa sol üst köşeyi kırpıp büyüterek arar. */
+/** RGBA'yı siyah-beyaza çevirir (en parlak kanal: renkli tarayıcı çizgileri beyaz olur; esik=0 ise yalnızca griye çevirir). */
+function ikiliYap(d: Uint8ClampedArray, esik: number): Uint8ClampedArray {
+  const o = new Uint8ClampedArray(d.length);
+  for (let i = 0; i < d.length; i += 4) {
+    let g = Math.max(d[i], d[i + 1], d[i + 2]);
+    if (esik) g = g < esik ? 0 : 255;
+    o[i] = o[i + 1] = o[i + 2] = g; o[i + 3] = 255;
+  }
+  return o;
+}
+
+/**
+ * QR'ı sırayla çeşitli yöntemlerle arar: ham görüntü, farklı eşiklerle siyah-beyaz, sol üst köşe büyütülmüş.
+ * Silik ya da hafif bozuk karekodlar eşikleme ile okunur.
+ */
 function karekodOku(bmp: ImageBitmap): string {
   const tam = tuvaleCiz(bmp);
-  const veri = tam.getContext('2d')!.getImageData(0, 0, tam.width, tam.height);
-  const r = jsQR(veri.data, veri.width, veri.height);
-  if (r?.data) return r.data.trim();
+  const v = tam.getContext('2d')!.getImageData(0, 0, tam.width, tam.height);
+  const dene = (data: Uint8ClampedArray, w: number, h: number) => jsQR(data, w, h)?.data?.trim() ?? '';
+  let k = dene(v.data, v.width, v.height);
+  if (k) return k;
+  for (const esik of [0, 128, 90, 160, 110, 70]) {
+    k = dene(ikiliYap(v.data, esik), v.width, v.height);
+    if (k) return k;
+  }
+  // sol üst köşe 2 kat büyütülüp denenir
   const w = Math.round(bmp.width * 0.4), h = Math.round(bmp.height * 0.3);
   const kes = document.createElement('canvas');
   kes.width = w * 2; kes.height = h * 2;
@@ -38,7 +58,11 @@ function karekodOku(bmp: ImageBitmap): string {
   kx.imageSmoothingQuality = 'high';
   kx.drawImage(tam, 0, 0, w, h, 0, 0, w * 2, h * 2);
   const d2 = kx.getImageData(0, 0, kes.width, kes.height);
-  return jsQR(d2.data, d2.width, d2.height)?.data?.trim() ?? '';
+  for (const esik of [-1, 0, 128, 90, 160]) {
+    k = dene(esik < 0 ? d2.data : ikiliYap(d2.data, esik), d2.width, d2.height);
+    if (k) return k;
+  }
+  return '';
 }
 
 export async function optikDosyasiOku(f: File): Promise<DosyaOkumasi> {
